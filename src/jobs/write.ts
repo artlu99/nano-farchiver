@@ -2,7 +2,13 @@ import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { pluralize } from "../lib/helpers";
-import { countReplies, getCastFromHash, getUserFromFid } from "./read";
+import {
+	renderReplyFooter,
+	renderReplyHeader,
+	renderTopLevelHeader,
+	renderUserHeader,
+} from "../lib/markdown";
+import { countReplies, getUserFromFid } from "./read";
 
 const OUT_DIR = "out";
 const USERS_DIR = `${OUT_DIR}/_users_`;
@@ -29,68 +35,6 @@ export const renderCast = (cast: Cast) => {
 	};
 };
 
-const renderTopLevelHeader = (cast: Cast): string => {
-	const renderedCast = renderCast(cast);
-	return `
----
-hash: ${renderedCast.hash.replace(/^0x/, "")}
-timestamp: ${renderedCast.timestamp}
-fid: ${renderedCast.fid}
----
-[${renderedCast.username}](../_users_/${renderedCast.username}.md)
-		`.trim();
-};
-
-const renderReplyHeader = (cast: Cast): string => {
-	const renderedCast = renderCast(cast);
-	const parentCast =
-		renderedCast.parent_fid && renderedCast.parent_hash
-			? getCastFromHash(renderedCast.parent_fid, renderedCast.parent_hash)
-			: undefined;
-	const parentCastTimestamp = parentCast?.timestamp;
-	const parentDtString = parentCastTimestamp
-		? new Date(parentCastTimestamp).toISOString().slice(0, 10).replace(/-/g, "")
-		: undefined;
-	const parentTmString = parentCastTimestamp
-		? new Date(parentCastTimestamp)
-				.toISOString()
-				.slice(11, 19)
-				.replace(/[-:]/g, "")
-		: undefined;
-	const parentUser = renderedCast.parent_fid
-		? getUserFromFid(renderedCast.parent_fid)
-		: undefined;
-
-	const parentCastPath = parentUser
-		? parentDtString && parentTmString
-			? `../${parentUser.username}/${parentDtString}-${parentTmString}-${renderedCast.parent_hash?.slice(2, 10)}.md`
-			: "<deleted>"
-		: undefined;
-
-	return `
----
-hash: ${renderedCast.hash.replace(/^0x/, "")}
-timestamp: ${renderedCast.timestamp}
-fid: ${renderedCast.fid}
-parent_fid: ${renderedCast.parent_fid}
-parent_hash: ${renderedCast.parent_hash?.replace(/^0x/, "")}
-root_parent_hash: ${cast.thread_hash?.replace(/^0x/, "")}
----
-[${renderedCast.username}](../_users_/${renderedCast.username}.md)
-replying to: [${parentUser?.username ?? "unknown"}](${parentCastPath})
-		`.trim();
-};
-
-const renderReplyFooter = (numReplies: number): string => {
-	if (numReplies === 0) {
-		return "";
-	}
-	return `
---
-${pluralize(numReplies, "Reply", "Replies")}
-		`.trim();
-};
-
 export const fidsLoop = async () => {
 	if (!fs.existsSync(USERS_DIR)) {
 		fs.mkdirSync(USERS_DIR, { recursive: true });
@@ -110,18 +54,7 @@ export const fidsLoop = async () => {
 		}
 
 		console.log("writing user to", userPath);
-		fs.writeFileSync(
-			userPath,
-			`
-username: ${user.username ?? "unknown"}
-fid: ${user.fid}
-display name: ${user.displayName ?? "unknown"}
-PFP: ${user.avatar ? `[${user.avatar}](${user.avatar})` : "unknown"}
-bio: ${user.bio ?? "unknown"}
-
-${user.avatar ? `<img src="${user.avatar}" height="100" width="100" alt="${user.displayName ?? "unknown"}" />` : "no avatar"}
-			`.trim(),
-		);
+		fs.writeFileSync(userPath, renderUserHeader(fid.fid));
 		const userCastHashes = (
 			db.query("SELECT hash FROM casts WHERE fid = ?").all(user.fid) as {
 				hash: string;

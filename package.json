@@ -1,24 +1,23 @@
 {
-  "name": "nano-farchiver",
-  "module": "index.ts",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "build": "bun run run && bun run bundle",
-    "clean": "rm -rf out out.tar.gz",
-    "clear": "rm db/queue.db3",
-    "run": "bun run src/index.ts",
-    "bundle": "tar -czvf out.tar.gz out"
-  },
-  "dependencies": {
-    "@neynar/nodejs-sdk": "^3.97.0",
-    "itty-fetcher": "^1.0.10",
-    "tiny-invariant": "^1.3.3"
-  },
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
+	"name": "nano-farchiver",
+	"module": "index.ts",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"clean": "rm -rf out out.tar.gz",
+		"clear": "rm db/queue.db3",
+		"doIt": "bun run src/index.ts",
+		"bundle": "tar -czvf out.tar.gz out"
+	},
+	"dependencies": {
+		"@neynar/nodejs-sdk": "^3.97.0",
+		"itty-fetcher": "^1.0.10",
+		"tiny-invariant": "^1.3.3"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	}
 }
