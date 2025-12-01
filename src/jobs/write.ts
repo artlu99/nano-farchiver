@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { pluralize } from "../lib/helpers";
-import { getCastFromHash, getUserFromFid } from "./read";
+import { countReplies, getCastFromHash, getUserFromFid } from "./read";
 
 const OUT_DIR = "out";
 const USERS_DIR = `${OUT_DIR}/_users_`;
@@ -38,7 +38,7 @@ timestamp: ${renderedCast.timestamp}
 fid: ${renderedCast.fid}
 ---
 [${renderedCast.username}](../_users_/${renderedCast.username}.md)
-		`;
+		`.trim();
 };
 
 const renderReplyHeader = (cast: Cast): string => {
@@ -78,7 +78,17 @@ root_parent_hash: ${cast.thread_hash?.replace(/^0x/, "")}
 ---
 [${renderedCast.username}](../_users_/${renderedCast.username}.md)
 replying to: [${parentUser?.username ?? "unknown"}](${parentCastPath})
-		`;
+		`.trim();
+};
+
+const renderReplyFooter = (numReplies: number): string => {
+	if (numReplies === 0) {
+		return "";
+	}
+	return `
+--
+${pluralize(numReplies, "Reply", "Replies")}
+		`.trim();
 };
 
 export const fidsLoop = async () => {
@@ -157,18 +167,20 @@ export const castsLoop = async () => {
 		}
 		console.log("writing cast to", castPath);
 		const renderedCast = renderCast(hydratedCast);
+		const replyCount = countReplies(fid, hash);
 
 		// write
 		fs.writeFileSync(
 			castPath,
 			`
 ${renderedCast.parent_hash ? renderReplyHeader(hydratedCast) : renderTopLevelHeader(hydratedCast)}
----
+--
 ${renderedCast.text}
----
-${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />` : '{no channel}'}
-		
-		`.trim(),
+${renderReplyFooter(replyCount)}
+--
+${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />` : "{no channel}"}
+
+`.trim(),
 		);
 	}
 };

@@ -5,7 +5,8 @@
 - [x] writes:
     - [x] split replies and top-level casts
     - [x] handle missing / deleted parents
-- [ ] does not include replies (yet)
+- [x] includes replies
+- [ ] does not show reactions
 - [ ] does not do embeds (yet) incl. quote casts
 
 ## DEVELOPING
