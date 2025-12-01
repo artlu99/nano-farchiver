@@ -16,3 +16,4 @@ db/*.db3
 # output
 out/
 samples/
+out.tar.gz

@@ -10,14 +10,22 @@ const USERS_DIR = `${OUT_DIR}/_users_`;
 const db = new Database("db/queue.db3", { strict: true });
 
 export const renderCast = (cast: Cast) => {
+	// TODO: quote casts
+	// TODO: embeds
 	return {
-		timestamp: cast.timestamp,
 		hash: cast.hash,
-		text: cast.text,
-		author: cast.author?.username,
-		author_fid: cast.author?.fid,
-		parent_author: cast.parent_author?.fid ?? undefined,
+		timestamp: cast.timestamp,
+		fid: cast.author?.fid,
+		parent_fid: cast.parent_author?.fid ?? undefined,
 		parent_hash: cast.parent_hash,
+
+		username: cast.author?.username,
+
+		text: cast.text,
+
+		channel: cast.channel?.name,
+		channel_id: cast.channel?.id,
+		channel_image: cast.channel?.image_url,
 	};
 };
 
@@ -57,17 +65,15 @@ ${user.avatar ? `<img src="${user.avatar}" height="100" width="100" alt="${user.
 				hash: string;
 			}[]
 		).map((h) => h.hash);
-		fs.appendFileSync(
-			userPath,
-			`\n---\n${userCastHashes.map((h) => h.slice(2, 10)).join("\n")}`,
-		);
+		fs.appendFileSync(userPath, `\n---\n${userCastHashes.join("\n")}`);
 	}
 };
 
 export const castsLoop = async () => {
-	const casts = db.query("SELECT hash, fid FROM casts").all() as {
+	const casts = db.query("SELECT hash, fid, data FROM casts").all() as {
 		hash: string;
 		fid: number;
+		data: string;
 	}[];
 	console.log(pluralize(casts.length, "cast"));
 	for (const cast of casts) {
@@ -76,19 +82,55 @@ export const castsLoop = async () => {
 		if (!user) {
 			continue;
 		}
-
+		const hydratedCast = JSON.parse(cast.data) as Cast;
+		const unixTimestamp = new Date(hydratedCast.timestamp);
+		// timestamp should by yyyymmdd-hhmmss in local time
+		const dtString = unixTimestamp.toISOString().slice(0, 10).replace(/-/g, "");
+		const tmString = unixTimestamp
+			.toISOString()
+			.slice(11, 19)
+			.replace(/[-:]/g, "");
 		// create /out/user.username subdirectory if it doesn't exist yet
 		const userSubdir = `${OUT_DIR}/${user.username}`;
 		if (!fs.existsSync(userSubdir)) {
 			fs.mkdirSync(userSubdir, { recursive: true });
 		}
 
-		const castPath = `${userSubdir}/${hash.slice(2, 10)}.md`;
+		const castPath = `${userSubdir}/${dtString}-${tmString}-${hash.slice(2, 10)}.md`;
 		if (fs.existsSync(castPath)) {
 			continue;
 		}
 		console.log("writing cast to", castPath);
-		fs.writeFileSync(castPath, JSON.stringify(cast));
+		const renderedCast = renderCast(hydratedCast);
+		const parentUser = renderedCast.parent_fid
+			? getUserFromFid(renderedCast.parent_fid)
+			: undefined;
+		// TODO: get parent cast timestamp, in order to link to it below
+		const parentCastTimestamp =  undefined;
+		const parentDtString = dtString;
+		const parentTmString = tmString;
+		const parentCastPath = parentUser
+			? `${OUT_DIR}/${parentUser.username}/${parentDtString}-${parentTmString}-${renderedCast.parent_hash?.slice(2, 10)}.md`
+			: undefined;
+		fs.writeFileSync(
+			castPath,
+			`
+---
+hash: ${renderedCast.hash}
+timestamp: ${renderedCast.timestamp}
+fid: ${renderedCast.fid}
+parent_fid: ${renderedCast.parent_fid}
+parent_hash: ${renderedCast.parent_hash}
+root_parent_hash: ${hydratedCast.thread_hash}
+---
+[${renderedCast.username}](../_users_/${renderedCast.username}.md)
+replying to: [${parentUser?.username ?? "unknown"}](../_users_/${parentUser?.username ?? "unknown"}.md)
+---
+${renderedCast.text}
+---
+${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />` : "<no channel>"}
+			`.trim(),
+		);
 	}
 };
 
