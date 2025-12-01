@@ -10,7 +10,7 @@ db.prepare(
 	"CREATE TABLE IF NOT EXISTS users (fid INTEGER PRIMARY KEY, username TEXT, displayName TEXT, avatar TEXT, bio TEXT)",
 ).run();
 db.prepare(
-	"CREATE TABLE IF NOT EXISTS casts (hash TEXT PRIMARY KEY, fid INTEGER)",
+	"CREATE TABLE IF NOT EXISTS casts (hash TEXT PRIMARY KEY, fid INTEGER, data TEXT)",
 ).run();
 
 interface User {
@@ -28,7 +28,13 @@ export const getUserFromFid = (fid: number): User => {
 		)
 		.get(fid) as User | undefined;
 	if (!user) {
-		throw new Error(`User not found: ${fid}`);
+		return {
+			username: `!${fid}`,
+			fid,
+			avatar: null,
+			displayName: `unknown user ${fid}`,
+			bio: null,
+		}
 	}
 	return user;
 };
@@ -45,8 +51,8 @@ const tagCast = (cast: FeedResponseType["casts"][number]) => {
 		cast.author.profile.bio.text ?? null,
 	);
 	db.prepare(
-		"INSERT INTO casts (hash, fid) VALUES (?, ?) ON CONFLICT DO NOTHING",
-	).run(cast.hash, cast.author.fid);
+		"INSERT INTO casts (hash, fid, data) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+	).run(cast.hash, cast.author.fid, JSON.stringify(cast));
 };
 
 export const queueLoop = async (casts: Cast[]) => {

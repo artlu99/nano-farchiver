@@ -1,5 +1,12 @@
 # my-farchive
 
+- [ ] incomplete parsing parent casts
+    - [ ] some parent fids missing
+    - [ ] parent casts mislinked
+- [ ] does not do embeds (yet) incl. quote casts
+
+## DEVELOPING
+
 To install dependencies:
 
 ```bash
