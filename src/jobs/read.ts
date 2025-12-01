@@ -11,9 +11,8 @@ db.prepare(
 	"CREATE TABLE IF NOT EXISTS users (fid INTEGER PRIMARY KEY, username TEXT, displayName TEXT, avatar TEXT, bio TEXT)",
 ).run();
 db.prepare(
-	"CREATE TABLE IF NOT EXISTS casts (hash TEXT PRIMARY KEY, fid INTEGER, data TEXT)",
+	"CREATE TABLE IF NOT EXISTS casts (hash TEXT PRIMARY KEY, fid INTEGER, data TEXT, parent_fid INTEGER, parent_hash TEXT)",
 ).run();
-
 
 export const getUserFromFid = (fid: number): User => {
 	if (hardcodedUsers[fid]) {
@@ -30,7 +29,10 @@ export const getUserFromFid = (fid: number): User => {
 	return user;
 };
 
-export const getCastFromHash = (fid: number, hash: string): Cast |undefined=> {
+export const getCastFromHash = (
+	fid: number,
+	hash: string,
+): Cast | undefined => {
 	const cast = db
 		.query("SELECT data FROM casts WHERE hash = ? AND fid = ?")
 		.get(hash, fid) as { data: string } | undefined;
@@ -39,6 +41,18 @@ export const getCastFromHash = (fid: number, hash: string): Cast |undefined=> {
 		return undefined;
 	}
 	return JSON.parse(cast.data) as Cast;
+};
+
+export const countReplies = (fid: number, hash: string): number => {
+	const res = db
+		.query(
+			"SELECT count(1) as count FROM casts WHERE parent_hash = ? AND parent_fid = ?",
+		)
+		.get(hash, fid) as { count: number } | undefined;
+	if (!res) {
+		return 0;
+	}
+	return res.count;
 };
 
 const tagCast = (cast: Cast) => {
@@ -53,8 +67,14 @@ const tagCast = (cast: Cast) => {
 		cast.author.profile.bio.text ?? null,
 	);
 	db.prepare(
-		"INSERT INTO casts (hash, fid, data) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
-	).run(cast.hash, cast.author.fid, JSON.stringify(cast));
+		"INSERT INTO casts (hash, fid, data, parent_fid, parent_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+	).run(
+		cast.hash,
+		cast.author.fid,
+		JSON.stringify(cast),
+		cast.parent_author?.fid,
+		cast.parent_hash,
+	);
 };
 
 export const queueLoop = async (casts: Cast[]) => {
@@ -78,6 +98,15 @@ export const queueLoop = async (casts: Cast[]) => {
 			for (const dr of conversation.conversation.cast.direct_replies) {
 				tagCast(dr);
 			}
+		}
+
+		const replies = await getConversation(c.hash);
+		tagCast(replies.conversation.cast);
+		for (const p of replies.conversation.chronological_parent_casts ?? []) {
+			tagCast(p);
+		}
+		for (const dr of replies.conversation.cast.direct_replies) {
+			tagCast(dr);
 		}
 
 		if (VERBOSE) console.log(renderCast(c));

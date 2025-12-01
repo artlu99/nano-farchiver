@@ -6,13 +6,16 @@ import { getReplies } from "./lib/neynar";
 const FID = 6546;
 
 const doIt = async (fid: number) => {
-	// TODO: process top-level casts, not just replies
-	const res = await getReplies(fid);
-	console.log(pluralize(res.casts.length, "cast"));
-	console.log(res.next?.cursor ?? "no cursor");
-
-	queueLoop(res.casts);
-	writeLoop();
+	try {
+		// TODO: process top-level casts, not just replies
+		const res = await getReplies(fid);
+		console.log(pluralize(res.casts.length, "cast"));
+		console.log(res.next?.cursor ?? "no cursor");
+		queueLoop(res.casts);
+		writeLoop();
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		throw error;
+	}
 };
-
 doIt(FID);
