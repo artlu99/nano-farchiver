@@ -21,18 +21,15 @@ const api = fetcher({
 	},
 });
 
-export type ConversationType = Conversation;
-export type FeedResponseType = FeedResponse;
-
-export const getReplies = async (fid: number): Promise<FeedResponseType> => {
+export const getReplies = async (fid: number): Promise<FeedResponse> => {
 	// TODO: handle pagination
 	const query = db.query(`SELECT data FROM replies WHERE fid = $fid`);
 	const cached = (await query.get(fid)) as { data: string } | undefined;
 	if (cached) {
-		return JSON.parse(cached.data) as FeedResponseType;
+		return JSON.parse(cached.data) as FeedResponse;
 	}
 	try {
-		const res = await api.get<FeedResponseType>(
+		const res = await api.get<FeedResponse>(
 			`/farcaster/feed/user/replies_and_recasts/?filter=replies&limit=25&fid=${fid}`,
 		);
 		db.prepare("INSERT INTO replies (fid, data) VALUES (?, ?)").run(
@@ -49,15 +46,15 @@ export const getReplies = async (fid: number): Promise<FeedResponseType> => {
 
 export const getConversation = async (
 	hash: string,
-): Promise<ConversationType> => {
+): Promise<Conversation> => {
 	// TODO: handle pagination
 	const query = db.query(`SELECT data FROM conversations WHERE hash = $hash`);
 	const cached = (await query.get(hash)) as { data: string } | undefined;
 	if (cached) {
-		return JSON.parse(cached.data) as ConversationType;
+		return JSON.parse(cached.data) as Conversation;
 	}
 	try {
-		const res = await api.get<ConversationType>(
+		const res = await api.get<Conversation>(
 			`/farcaster/cast/conversation/?reply_depth=5&include_chronological_parent_casts=true&limit=50&identifier=${hash}&type=hash`,
 		);
 		db.prepare("INSERT INTO conversations (hash, data) VALUES (?, ?)").run(

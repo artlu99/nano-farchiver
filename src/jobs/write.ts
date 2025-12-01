@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { pluralize } from "../lib/helpers";
-import { getUserFromFid } from "./read";
+import { getCastFromHash, getUserFromFid } from "./read";
 
 const OUT_DIR = "out";
 const USERS_DIR = `${OUT_DIR}/_users_`;
@@ -27,6 +27,58 @@ export const renderCast = (cast: Cast) => {
 		channel_id: cast.channel?.id,
 		channel_image: cast.channel?.image_url,
 	};
+};
+
+const renderTopLevelHeader = (cast: Cast): string => {
+	const renderedCast = renderCast(cast);
+	return `
+---
+hash: ${renderedCast.hash.replace(/^0x/, "")}
+timestamp: ${renderedCast.timestamp}
+fid: ${renderedCast.fid}
+---
+[${renderedCast.username}](../_users_/${renderedCast.username}.md)
+		`;
+};
+
+const renderReplyHeader = (cast: Cast): string => {
+	const renderedCast = renderCast(cast);
+	const parentCast =
+		renderedCast.parent_fid && renderedCast.parent_hash
+			? getCastFromHash(renderedCast.parent_fid, renderedCast.parent_hash)
+			: undefined;
+	const parentCastTimestamp = parentCast?.timestamp;
+	const parentDtString = parentCastTimestamp
+		? new Date(parentCastTimestamp).toISOString().slice(0, 10).replace(/-/g, "")
+		: undefined;
+	const parentTmString = parentCastTimestamp
+		? new Date(parentCastTimestamp)
+				.toISOString()
+				.slice(11, 19)
+				.replace(/[-:]/g, "")
+		: undefined;
+	const parentUser = renderedCast.parent_fid
+		? getUserFromFid(renderedCast.parent_fid)
+		: undefined;
+
+	const parentCastPath = parentUser
+		? parentDtString && parentTmString
+			? `../${parentUser.username}/${parentDtString}-${parentTmString}-${renderedCast.parent_hash?.slice(2, 10)}.md`
+			: "<deleted>"
+		: undefined;
+
+	return `
+---
+hash: ${renderedCast.hash.replace(/^0x/, "")}
+timestamp: ${renderedCast.timestamp}
+fid: ${renderedCast.fid}
+parent_fid: ${renderedCast.parent_fid}
+parent_hash: ${renderedCast.parent_hash?.replace(/^0x/, "")}
+root_parent_hash: ${cast.thread_hash?.replace(/^0x/, "")}
+---
+[${renderedCast.username}](../_users_/${renderedCast.username}.md)
+replying to: [${parentUser?.username ?? "unknown"}](${parentCastPath})
+		`;
 };
 
 export const fidsLoop = async () => {
@@ -65,7 +117,10 @@ ${user.avatar ? `<img src="${user.avatar}" height="100" width="100" alt="${user.
 				hash: string;
 			}[]
 		).map((h) => h.hash);
-		fs.appendFileSync(userPath, `\n---\n${userCastHashes.join("\n")}`);
+		fs.appendFileSync(
+			userPath,
+			`\n---\n${userCastHashes.map((h) => h.replace(/^0x/, "")).join("\n")}`,
+		);
 	}
 };
 
@@ -102,34 +157,18 @@ export const castsLoop = async () => {
 		}
 		console.log("writing cast to", castPath);
 		const renderedCast = renderCast(hydratedCast);
-		const parentUser = renderedCast.parent_fid
-			? getUserFromFid(renderedCast.parent_fid)
-			: undefined;
-		// TODO: get parent cast timestamp, in order to link to it below
-		const parentCastTimestamp =  undefined;
-		const parentDtString = dtString;
-		const parentTmString = tmString;
-		const parentCastPath = parentUser
-			? `${OUT_DIR}/${parentUser.username}/${parentDtString}-${parentTmString}-${renderedCast.parent_hash?.slice(2, 10)}.md`
-			: undefined;
+
+		// write
 		fs.writeFileSync(
 			castPath,
 			`
----
-hash: ${renderedCast.hash}
-timestamp: ${renderedCast.timestamp}
-fid: ${renderedCast.fid}
-parent_fid: ${renderedCast.parent_fid}
-parent_hash: ${renderedCast.parent_hash}
-root_parent_hash: ${hydratedCast.thread_hash}
----
-[${renderedCast.username}](../_users_/${renderedCast.username}.md)
-replying to: [${parentUser?.username ?? "unknown"}](../_users_/${parentUser?.username ?? "unknown"}.md)
+${renderedCast.parent_hash ? renderReplyHeader(hydratedCast) : renderTopLevelHeader(hydratedCast)}
 ---
 ${renderedCast.text}
 ---
-${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />` : "<no channel>"}
-			`.trim(),
+${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />` : '{no channel}'}
+		
+		`.trim(),
 		);
 	}
 };

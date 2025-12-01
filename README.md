@@ -1,8 +1,11 @@
 # my-farchive
 
-- [ ] incomplete parsing parent casts
-    - [ ] some parent fids missing
-    - [ ] parent casts mislinked
+- [x] incomplete parsing parent casts
+    - [x] parent casts mislinked
+- [x] writes:
+    - [x] split replies and top-level casts
+    - [x] handle missing / deleted parents
+- [ ] does not include replies (yet)
 - [ ] does not do embeds (yet) incl. quote casts
 
 ## DEVELOPING
