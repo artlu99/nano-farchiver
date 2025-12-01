@@ -1,7 +1,6 @@
 # dependencies (bun install)
 node_modules
 bun.lock
-db/*.db3
 
 # dotenv environment variable files
 .env
@@ -12,3 +11,8 @@ db/*.db3
 
 # caches
 *.tsbuildinfo
+db/*.db3
+
+# output
+out/
+samples/

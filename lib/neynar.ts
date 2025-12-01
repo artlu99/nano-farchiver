@@ -25,7 +25,7 @@ export type ConversationType = Conversation;
 export type FeedResponseType = FeedResponse;
 
 export const getReplies = async (fid: number): Promise<FeedResponseType> => {
-	// this doesn't handle pagination
+	// TODO: handle pagination
 	const query = db.query(`SELECT data FROM replies WHERE fid = $fid`);
 	const cached = (await query.get(fid)) as { data: string } | undefined;
 	if (cached) {
@@ -50,7 +50,7 @@ export const getReplies = async (fid: number): Promise<FeedResponseType> => {
 export const getConversation = async (
 	hash: string,
 ): Promise<ConversationType> => {
-	// this doesn't handle pagination
+	// TODO: handle pagination
 	const query = db.query(`SELECT data FROM conversations WHERE hash = $hash`);
 	const cached = (await query.get(hash)) as { data: string } | undefined;
 	if (cached) {

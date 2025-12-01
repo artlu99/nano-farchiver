@@ -1,35 +1,52 @@
 import { Database } from "bun:sqlite";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { type FeedResponseType, getConversation } from "../lib/neynar";
+import { renderCast } from "./write";
 
 const VERBOSE = false;
 
 const db = new Database("db/queue.db3", { strict: true });
-db.prepare("CREATE TABLE IF NOT EXISTS fids (fid INTEGER PRIMARY KEY)").run();
+db.prepare(
+	"CREATE TABLE IF NOT EXISTS users (fid INTEGER PRIMARY KEY, username TEXT, displayName TEXT, avatar TEXT, bio TEXT)",
+).run();
 db.prepare(
 	"CREATE TABLE IF NOT EXISTS casts (hash TEXT PRIMARY KEY, fid INTEGER)",
 ).run();
 
+interface User {
+	username: string | null;
+	fid: number;
+	avatar: string | null;
+	displayName: string | null;
+	bio: string | null;
+}
+
+export const getUserFromFid = (fid: number): User => {
+	const user = db
+		.query(
+			"SELECT fid, username, displayName, avatar, bio FROM users WHERE fid = ?",
+		)
+		.get(fid) as User | undefined;
+	if (!user) {
+		throw new Error(`User not found: ${fid}`);
+	}
+	return user;
+};
+
 const tagCast = (cast: FeedResponseType["casts"][number]) => {
 	if (VERBOSE) console.log(cast.author.fid, cast.hash);
-	db.prepare("INSERT INTO fids (fid) VALUES (?) ON CONFLICT DO NOTHING").run(
+	db.prepare(
+		"INSERT INTO users (fid, username, displayName, avatar, bio) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+	).run(
 		cast.author.fid,
+		cast.author.username ?? null,
+		cast.author.display_name ?? null,
+		cast.author.pfp_url ?? null,
+		cast.author.profile.bio.text ?? null,
 	);
 	db.prepare(
 		"INSERT INTO casts (hash, fid) VALUES (?, ?) ON CONFLICT DO NOTHING",
 	).run(cast.hash, cast.author.fid);
-};
-
-const renderCast = (cast: FeedResponseType["casts"][number]) => {
-	return {
-		timestamp: cast.timestamp,
-		hash: cast.hash,
-		text: cast.text,
-		author: cast.author?.username,
-		author_fid: cast.author?.fid,
-		parent_author: cast.parent_author?.fid ?? undefined,
-		parent_hash: cast.parent_hash,
-	};
 };
 
 export const queueLoop = async (casts: Cast[]) => {
@@ -45,7 +62,8 @@ export const queueLoop = async (casts: Cast[]) => {
 				console.log(conversation.conversation.cast.direct_replies.length);
 				console.log(conversation.next?.cursor ?? "no cursor");
 			}
-			for (const p of conversation.conversation.chronological_parent_casts ?? []) {
+			for (const p of conversation.conversation.chronological_parent_casts ??
+				[]) {
 				tagCast(p);
 			}
 			for (const dr of conversation.conversation.cast.direct_replies) {
