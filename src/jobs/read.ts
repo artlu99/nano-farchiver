@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
-import { type FeedResponseType, getConversation } from "../lib/neynar";
+import { hardcodedUsers, type User } from "../lib/helpers";
+import { getConversation } from "../lib/neynar";
 import { renderCast } from "./write";
 
 const VERBOSE = false;
@@ -13,33 +14,34 @@ db.prepare(
 	"CREATE TABLE IF NOT EXISTS casts (hash TEXT PRIMARY KEY, fid INTEGER, data TEXT)",
 ).run();
 
-interface User {
-	username: string | null;
-	fid: number;
-	avatar: string | null;
-	displayName: string | null;
-	bio: string | null;
-}
 
 export const getUserFromFid = (fid: number): User => {
+	if (hardcodedUsers[fid]) {
+		return hardcodedUsers[fid];
+	}
 	const user = db
 		.query(
 			"SELECT fid, username, displayName, avatar, bio FROM users WHERE fid = ?",
 		)
 		.get(fid) as User | undefined;
 	if (!user) {
-		return {
-			username: `!${fid}`,
-			fid,
-			avatar: null,
-			displayName: `unknown user ${fid}`,
-			bio: null,
-		}
+		throw new Error(`User with fid ${fid} not found in database`);
 	}
 	return user;
 };
 
-const tagCast = (cast: FeedResponseType["casts"][number]) => {
+export const getCastFromHash = (fid: number, hash: string): Cast |undefined=> {
+	const cast = db
+		.query("SELECT data FROM casts WHERE hash = ? AND fid = ?")
+		.get(hash, fid) as { data: string } | undefined;
+	if (!cast) {
+		console.error(`Cast with hash ${hash} not found in database`);
+		return undefined;
+	}
+	return JSON.parse(cast.data) as Cast;
+};
+
+const tagCast = (cast: Cast) => {
 	if (VERBOSE) console.log(cast.author.fid, cast.hash);
 	db.prepare(
 		"INSERT INTO users (fid, username, displayName, avatar, bio) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
@@ -61,6 +63,7 @@ export const queueLoop = async (casts: Cast[]) => {
 
 		if (c.thread_hash) {
 			const conversation = await getConversation(c.thread_hash);
+			tagCast(conversation.conversation.cast);
 			if (VERBOSE) {
 				console.log(
 					(conversation.conversation.chronological_parent_casts ?? []).length,
