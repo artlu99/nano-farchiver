@@ -3,6 +3,7 @@ import fs from "node:fs";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { pluralize } from "../lib/helpers";
 import {
+	renderEmbeds,
 	renderReplyFooter,
 	renderReplyHeader,
 	renderTopLevelHeader,
@@ -109,6 +110,7 @@ export const castsLoop = async () => {
 ${renderedCast.parent_hash ? renderReplyHeader(hydratedCast) : renderTopLevelHeader(hydratedCast)}
 --
 ${renderedCast.text}
+${renderEmbeds(hydratedCast.embeds ?? [])}
 ${renderReplyFooter(replyCount)}
 --
 ${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />` : "{no channel}"}

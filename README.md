@@ -6,9 +6,6 @@
 
 `nano farchiver` is a weekend project that leverages free + paid SAAS. It may be censorable, but it costs very little.
 
-- [ ] does not show reactions
-- [ ] does not do embeds (yet) incl. quote casts
-
 ## RUNNING
 
 To run:
@@ -56,3 +53,9 @@ bun run src/index.ts
 ```
 
 This project was created using `bun init` in bun v1.3.3. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+
+### WONTFIX
+
+- [ ] does not show reactions (likes + recasts)
+- [ ] does not do all embeds, incl. quote casts
+- [ ] no placeholders for frames / miniapps, videos, etc.

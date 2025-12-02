@@ -1,4 +1,4 @@
-import type { Cast } from "@neynar/nodejs-sdk/build/api";
+import type { Cast, Embed, EmbedUrl, EmbedUrlMetadata, EmbedUrlMetadataImage } from "@neynar/nodejs-sdk/build/api";
 import { getCastFromHash, getUserFromFid } from "../jobs/read";
 import { renderCast } from "../jobs/write";
 import { pluralize } from "./helpers";
@@ -76,4 +76,22 @@ export const renderReplyFooter = (numReplies: number): string => {
 --
 ${pluralize(numReplies, "Reply", "Replies")}
 		`.trim();
+};
+
+const isEmbedUrl = (embed: Embed): embed is EmbedUrl => {
+	return "url" in embed;
+};
+const isEmbedUrlImage = (embedUrl: EmbedUrlMetadata): boolean => {
+	return "image" in embedUrl;
+};
+export const renderEmbeds = (embeds: Embed[]): string => {
+	return embeds
+		.filter(isEmbedUrl)
+		.filter((embed) => embed.metadata && isEmbedUrlImage(embed.metadata))
+		.map((embed) =>
+			`
+<img src="${embed.url}" height={${embed.metadata?.image?.height_px}} width={${embed.metadata?.image?.width_px}} alt="embedded image" />
+		`.trim(),
+		)
+		.join("\n");
 };
