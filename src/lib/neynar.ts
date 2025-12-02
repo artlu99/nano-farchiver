@@ -9,6 +9,9 @@ import { wrapFetchWithPayment } from "x402-fetch";
 
 const db = new Database("db/cache.db3", { strict: true });
 db.prepare(
+	"CREATE TABLE IF NOT EXISTS casts (fid INTEGER PRIMARY KEY, data TEXT)",
+).run();
+db.prepare(
 	"CREATE TABLE IF NOT EXISTS replies (fid INTEGER PRIMARY KEY, data TEXT)",
 ).run();
 db.prepare(
@@ -43,6 +46,24 @@ const api = fetcher({
 	},
 });
 
+export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
+	// TODO: handle pagination
+	const query = db.query(`SELECT data FROM casts WHERE fid = $fid`);
+	const cached = (await query.get(fid)) as { data: string } | undefined;
+	if (cached) {
+		return JSON.parse(cached.data) as FeedResponse;
+	}
+
+	const res = await api.get<FeedResponse>(
+		`/farcaster/feed/user/casts/?limit=150&include_replies=false&fid=${fid}`,
+	);
+	db.prepare("INSERT INTO casts (fid, data) VALUES (?, ?)").run(
+		fid,
+		JSON.stringify(res),
+	);
+	return res;
+};
+
 export const getReplies = async (fid: number): Promise<FeedResponse> => {
 	// TODO: handle pagination
 	const query = db.query(`SELECT data FROM replies WHERE fid = $fid`);
@@ -52,7 +73,7 @@ export const getReplies = async (fid: number): Promise<FeedResponse> => {
 	}
 
 	const res = await api.get<FeedResponse>(
-		`/farcaster/feed/user/replies_and_recasts/?filter=replies&limit=25&fid=${fid}`,
+		`/farcaster/feed/user/replies_and_recasts/?filter=replies&limit=50&fid=${fid}`,
 	);
 	db.prepare("INSERT INTO replies (fid, data) VALUES (?, ?)").run(
 		fid,
