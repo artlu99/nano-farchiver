@@ -2,6 +2,10 @@ import { Database } from "bun:sqlite";
 import type { Conversation, FeedResponse } from "@neynar/nodejs-sdk/build/api";
 import { fetcher } from "itty-fetcher";
 import invariant from "tiny-invariant";
+import { createWalletClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { base } from "viem/chains";
+import { wrapFetchWithPayment } from "x402-fetch";
 
 const db = new Database("db/cache.db3", { strict: true });
 db.prepare(
@@ -12,6 +16,24 @@ db.prepare(
 ).run();
 
 invariant(process.env.NEYNAR_API_KEY, "NEYNAR_API_KEY is not set");
+invariant(process.env.EOA_PRIVATE_KEY, "EOA_PRIVATE_KEY is not set");
+
+const account = privateKeyToAccount(
+	`0x${process.env.EOA_PRIVATE_KEY.replace("0x", "")}`,
+);
+const walletClient = createWalletClient({
+	account,
+	transport: http(),
+	chain: base,
+});
+// @ts-expect-error - partial typing of walletClient
+const fetchWithPay = wrapFetchWithPayment(fetch, walletClient);
+// biome-ignore lint/correctness/noUnusedVariables: placeholder
+const x402api = fetcher({
+	// @ts-expect-error - partial typing of fetchWithPay 
+	fetch: fetchWithPay,
+	base: "https://api.neynar.com/v2",
+});
 
 const api = fetcher({
 	base: "https://api.neynar.com/v2",
