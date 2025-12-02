@@ -32,7 +32,7 @@ export const renderReplyHeader = (cast: Cast): string => {
 	const renderedCast = renderCast(cast);
 	const parentCast =
 		renderedCast.parent_fid && renderedCast.parent_hash
-			? getCastFromHash(renderedCast.parent_fid, renderedCast.parent_hash)
+			? getCastFromHash(renderedCast.parent_hash, renderedCast.parent_fid)
 			: undefined;
 	const parentCastTimestamp = parentCast?.timestamp;
 	const parentDtString = parentCastTimestamp

@@ -1,11 +1,17 @@
 import { Database } from "bun:sqlite";
-import type { Conversation, FeedResponse } from "@neynar/nodejs-sdk/build/api";
+import type {
+	Cast,
+	Conversation,
+	FeedResponse,
+} from "@neynar/nodejs-sdk/build/api";
 import { fetcher } from "itty-fetcher";
+import { diff, sift, unique } from "radash";
 import invariant from "tiny-invariant";
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { wrapFetchWithPayment } from "x402-fetch";
+import { getCastFromHash, tagCast } from "../jobs/read";
 
 const db = new Database("db/cache.db3", { strict: true });
 db.prepare(
@@ -33,7 +39,7 @@ const walletClient = createWalletClient({
 const fetchWithPay = wrapFetchWithPayment(fetch, walletClient);
 // biome-ignore lint/correctness/noUnusedVariables: placeholder
 const x402api = fetcher({
-	// @ts-expect-error - partial typing of fetchWithPay 
+	// @ts-expect-error - partial typing of fetchWithPay
 	fetch: fetchWithPay,
 	base: "https://api.neynar.com/v2",
 });
@@ -99,4 +105,37 @@ export const getConversation = async (hash: string): Promise<Conversation> => {
 		JSON.stringify(res),
 	);
 	return res;
+};
+
+export const getCasts = async (hashes: string[]): Promise<Cast[]> => {
+	invariant(hashes.length > 0, "hashes is empty");
+	invariant(hashes.length <= 25, "hashes can't be more than 25 at a time");
+
+	// check cache for each hash
+	const cachedCasts = sift(
+		hashes.map((hash) => getCastFromHash(hash, undefined)),
+	);
+	const seenHashes = unique(cachedCasts.map((cast) => cast.hash));
+	const unseenHashes = diff(hashes, seenHashes);
+
+	if (unseenHashes.length > 0) {
+		try {
+			const res = await api.get<{ result: { casts: Cast[] } }>(
+				`/farcaster/casts/?casts=${unseenHashes.join(",")}`,
+			);
+			// update cache for unseen hashes
+			for (const cast of res.result.casts) {
+				tagCast(cast);
+			}
+			return [...cachedCasts, ...res.result.casts];
+		} catch (error: unknown) {
+			console.error(
+				"Error getting casts",
+				(error as { statusText?: string })?.statusText ??
+					(error as Error)?.message,
+			);
+			return cachedCasts;
+		}
+	}
+	return cachedCasts;
 };
