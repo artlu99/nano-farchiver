@@ -1,7 +1,9 @@
 import { Database } from "bun:sqlite";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
+import { cluster } from "radash";
 import { hardcodedUsers, type User } from "../lib/helpers";
-import { getConversation } from "../lib/neynar";
+import { getCasts, getConversation } from "../lib/neynar";
+import { traverse } from "../lib/snapchain";
 import { renderCast } from "./write";
 
 const VERBOSE = false;
@@ -30,12 +32,16 @@ export const getUserFromFid = (fid: number): User => {
 };
 
 export const getCastFromHash = (
-	fid: number,
 	hash: string,
+	fid: number | undefined,
 ): Cast | undefined => {
-	const cast = db
-		.query("SELECT data FROM casts WHERE hash = ? AND fid = ?")
-		.get(hash, fid) as { data: string } | undefined;
+	const cast = fid
+		? (db
+				.query("SELECT data FROM casts WHERE hash = ? AND fid = ?")
+				.get(hash, fid) as { data: string } | undefined)
+		: (db.query("SELECT data FROM casts WHERE hash = ?").get(hash) as
+				| { data: string }
+				| undefined);
 	if (!cast) {
 		console.error(`Cast with hash ${hash} not found in database`);
 		return undefined;
@@ -55,7 +61,7 @@ export const countReplies = (fid: number, hash: string): number => {
 	return res.count;
 };
 
-const tagCast = (cast: Cast) => {
+export const tagCast = (cast: Cast) => {
 	if (VERBOSE) console.log(cast.author.fid, cast.hash);
 	db.prepare(
 		"INSERT INTO users (fid, username, displayName, avatar, bio) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
@@ -97,6 +103,17 @@ export const queueLoop = async (casts: Cast[]) => {
 			}
 			for (const dr of conversation.conversation.cast.direct_replies) {
 				tagCast(dr);
+			}
+
+			if (c.parent_author?.fid && c.parent_hash) {
+				const fullThread = await traverse(c.parent_author.fid, c.parent_hash);
+				await Promise.all(
+					cluster(fullThread, 25).map((chunk) =>
+						getCasts(chunk.map((item) => item.hash)),
+					),
+				);
+			} else {
+				console.error("No parent author or hash found for cast", c.hash);
 			}
 		}
 
