@@ -3,7 +3,7 @@ import { writeLoop } from "./jobs/write";
 import { pluralize } from "./lib/helpers";
 import { getCronFeed, getReplies } from "./lib/neynar";
 
-const FID = 6546;
+const FID = 15850;
 
 const doIt = async (fid: number) => {
 	try {
