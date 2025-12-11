@@ -45,7 +45,7 @@ export const fidsLoop = async () => {
 	console.log(pluralize(fids.length, "fid"));
 
 	for (const fid of fids) {
-		const user = getUserFromFid(fid.fid);
+		const user = await getUserFromFid(fid.fid);
 		if (!user) {
 			continue;
 		}
@@ -55,7 +55,7 @@ export const fidsLoop = async () => {
 		}
 
 		console.log("writing user to", userPath);
-		fs.writeFileSync(userPath, renderUserHeader(fid.fid));
+		fs.writeFileSync(userPath, await renderUserHeader(fid.fid));
 		const userCastHashes = (
 			db.query("SELECT hash FROM casts WHERE fid = ?").all(user.fid) as {
 				hash: string;
@@ -77,7 +77,7 @@ export const castsLoop = async () => {
 	console.log(pluralize(casts.length, "cast"));
 	for (const cast of casts) {
 		const { fid, hash } = cast;
-		const user = getUserFromFid(fid);
+		const user = await getUserFromFid(fid);
 		if (!user) {
 			continue;
 		}
@@ -107,7 +107,7 @@ export const castsLoop = async () => {
 		fs.writeFileSync(
 			castPath,
 			`
-${renderedCast.parent_hash ? renderReplyHeader(hydratedCast) : renderTopLevelHeader(hydratedCast)}
+${renderedCast.parent_hash ? await renderReplyHeader(hydratedCast) : renderTopLevelHeader(hydratedCast)}
 --
 ${renderedCast.text}
 ${renderEmbeds(hydratedCast.embeds ?? [])}

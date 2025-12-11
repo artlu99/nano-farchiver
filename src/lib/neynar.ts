@@ -5,7 +5,7 @@ import type {
 	FeedResponse,
 } from "@neynar/nodejs-sdk/build/api";
 import { fetcher } from "itty-fetcher";
-import { diff, sift, unique } from "radash";
+import { diff, sift, sleep, unique } from "radash";
 import invariant from "tiny-invariant";
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -13,7 +13,6 @@ import { base } from "viem/chains";
 import { wrapFetchWithPayment } from "x402-fetch";
 import { getCastFromHash, tagCast } from "../jobs/read";
 
-const PAGE_SIZE = 50; // some queries are limited to 50, so we use that as a limit
 const MAX_SIZE = 10000;
 
 const db = new Database("db/cache.db3", { strict: true });
@@ -33,6 +32,7 @@ invariant(process.env.EOA_PRIVATE_KEY, "EOA_PRIVATE_KEY is not set");
 const account = privateKeyToAccount(
 	`0x${process.env.EOA_PRIVATE_KEY.replace("0x", "")}`,
 );
+console.log("account:", account.address);
 const walletClient = createWalletClient({
 	account,
 	transport: http(),
@@ -69,6 +69,30 @@ const retryWithSkip = async <T>(
 			return await fn();
 		} catch (error) {
 			lastError = error;
+			// Log the error for debugging
+			if (i === 0) {
+				// Log first attempt error
+				if (
+					error &&
+					typeof error === "object" &&
+					"status" in error
+				) {
+					const status = (error as { status?: number }).status;
+					const message =
+						"message" in error
+							? (error as { message?: string }).message
+							: "Unknown error";
+					console.error(
+						`Request failed (attempt ${i + 1}/${options.times}): HTTP ${status} - ${message}`,
+					);
+				} else {
+					console.error(
+						`Request failed (attempt ${i + 1}/${options.times}):`,
+						error,
+					);
+				}
+			}
+
 			// Check if it's a 400 error (client error) - don't retry these
 			if (
 				error &&
@@ -82,13 +106,18 @@ const retryWithSkip = async <T>(
 				);
 				throw error;
 			}
+
 			// For other errors, wait and retry
 			if (i < options.times - 1) {
 				const delay = options.backoff(i);
+				console.log(
+					`Retrying in ${delay}ms (attempt ${i + 2}/${options.times})...`,
+				);
 				await new Promise((resolve) => setTimeout(resolve, delay));
 			}
 		}
 	}
+	console.error(`All ${options.times} retry attempts failed`);
 	throw lastError;
 };
 
@@ -98,6 +127,7 @@ const retryWithSkip = async <T>(
  */
 const paginateFeedResponse = async (
 	url: string,
+	limit: number,
 	baseParams: Record<string, string | number | boolean>,
 ): Promise<FeedResponse> => {
 	const allCasts: Cast[] = [];
@@ -109,12 +139,13 @@ const paginateFeedResponse = async (
 		const fetchPage = async () => {
 			const params: Record<string, string | number | boolean> = {
 				...baseParams,
-				limit: PAGE_SIZE,
+				limit,
 			};
 			if (cursor) {
 				params.cursor = cursor;
 			}
 
+			console.log("fetching page:", url, params);
 			const res = await api.get<FeedResponse>(url, { query: params });
 			return res;
 		};
@@ -122,8 +153,14 @@ const paginateFeedResponse = async (
 		try {
 			const res = await retryWithSkip(
 				{
-					times: 5,
-					backoff: (i) => Math.min(1000 * 2 ** i, 30000), // Exponential backoff, max 30s
+					times: 3,
+					backoff: (i) => {
+						const delay = Math.min(1000 * 2 ** i, 30000);
+						if (i > 0) {
+							console.log(`Retrying after ${delay}ms (attempt ${i + 1}/5)`);
+						}
+						return delay;
+					},
 				},
 				fetchPage,
 			);
@@ -133,15 +170,37 @@ const paginateFeedResponse = async (
 				firstResponse = res;
 			}
 
+			// Check if response has casts
+			if (!res.casts || res.casts.length === 0) {
+				console.warn(
+					`WARNING: Response has no casts! Response keys: ${Object.keys(res).join(", ")}`,
+				);
+				hasMore = false;
+				break;
+			}
+
 			allCasts.push(...res.casts);
 
 			// Check if there's a next page
-			cursor = res.next?.cursor ?? undefined;
-			hasMore = !!cursor && res.casts.length === PAGE_SIZE;
+			const previousCursor = cursor;
+			const newCursor = res.next?.cursor ?? undefined;
+			cursor = newCursor;
+			hasMore = !!cursor && res.casts.length === limit;
 
 			// Stop if we got fewer than requested (last page)
-			if (res.casts.length < PAGE_SIZE) {
+			if (res.casts.length < limit) {
 				hasMore = false;
+				console.log(
+					`Stopping pagination: got ${res.casts.length} casts (less than ${limit})`,
+				);
+			}
+
+			// Safety check: if cursor didn't change, we might be stuck in a loop
+			if (previousCursor && cursor && previousCursor === cursor) {
+				console.warn(
+					`WARNING: Cursor didn't change! Previous: ${previousCursor.substring(0, 50)}, New: ${cursor.substring(0, 50)}`,
+				);
+				hasMore = false; // Stop to avoid infinite loop
 			}
 		} catch (error) {
 			console.error(
@@ -197,7 +256,7 @@ export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
 	}
 
 	// Fetch all pages
-	const res = await paginateFeedResponse("/farcaster/feed/user/casts/", {
+	const res = await paginateFeedResponse("/farcaster/feed/user/casts/", 150, {
 		include_replies: false,
 		fid,
 	});
@@ -222,6 +281,7 @@ export const getReplies = async (fid: number): Promise<FeedResponse> => {
 	// Fetch all pages
 	const res = await paginateFeedResponse(
 		"/farcaster/feed/user/replies_and_recasts/",
+		50,
 		{
 			filter: "replies",
 			fid,
@@ -245,6 +305,7 @@ const paginateConversation = async (
 	url: string,
 	baseParams: Record<string, string | number | boolean>,
 ): Promise<Conversation> => {
+	const limit = 50;
 	let mergedConversation: Conversation | undefined;
 	let cursor: string | undefined;
 	let hasMore = true;
@@ -253,7 +314,7 @@ const paginateConversation = async (
 		const fetchPage = async () => {
 			const params: Record<string, string | number | boolean> = {
 				...baseParams,
-				limit: PAGE_SIZE,
+				limit,
 			};
 			if (cursor) {
 				params.cursor = cursor;
@@ -308,7 +369,7 @@ const paginateConversation = async (
 			// Stop if we got fewer than requested (last page)
 			// For conversations, we check if we got a full page of replies
 			const replyCount = res.conversation.cast.direct_replies?.length || 0;
-			if (replyCount < PAGE_SIZE) {
+			if (replyCount < limit) {
 				hasMore = false;
 			}
 		} catch (error) {

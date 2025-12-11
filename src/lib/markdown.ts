@@ -1,10 +1,10 @@
-import type { Cast, Embed, EmbedUrl, EmbedUrlMetadata, EmbedUrlMetadataImage } from "@neynar/nodejs-sdk/build/api";
+import type { Cast, Embed, EmbedUrl, EmbedUrlMetadata } from "@neynar/nodejs-sdk/build/api";
 import { getCastFromHash, getUserFromFid } from "../jobs/read";
 import { renderCast } from "../jobs/write";
 import { pluralize } from "./helpers";
 
-export const renderUserHeader = (fid: number): string => {
-	const user = getUserFromFid(fid);
+export const renderUserHeader = async (fid: number): Promise<string> => {
+	const user = await getUserFromFid(fid);
 	return `
 username: ${user.username ?? "unknown"}
 fid: ${user.fid}
@@ -28,7 +28,7 @@ fid: ${renderedCast.fid}
 		`.trim();
 };
 
-export const renderReplyHeader = (cast: Cast): string => {
+export const renderReplyHeader = async (cast: Cast): Promise<string> => {
 	const renderedCast = renderCast(cast);
 	const parentCast =
 		renderedCast.parent_fid && renderedCast.parent_hash
@@ -45,7 +45,7 @@ export const renderReplyHeader = (cast: Cast): string => {
 				.replace(/[-:]/g, "")
 		: undefined;
 	const parentUser = renderedCast.parent_fid
-		? getUserFromFid(renderedCast.parent_fid)
+		? await getUserFromFid(renderedCast.parent_fid)
 		: undefined;
 
 	const parentCastPath = parentUser
