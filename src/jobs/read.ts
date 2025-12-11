@@ -3,6 +3,7 @@ import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { cluster } from "radash";
 import { hardcodedUsers, type User } from "../lib/helpers";
 import { getCasts, getConversation } from "../lib/neynar";
+import { getUserFromShim } from "../lib/shim";
 import { traverse } from "../lib/snapchain";
 import { renderCast } from "./write";
 
@@ -16,7 +17,7 @@ db.prepare(
 	"CREATE TABLE IF NOT EXISTS casts (hash TEXT PRIMARY KEY, fid INTEGER, data TEXT, parent_fid INTEGER, parent_hash TEXT)",
 ).run();
 
-export const getUserFromFid = (fid: number): User => {
+export const getUserFromFid = async (fid: number): Promise<User> => {
 	if (hardcodedUsers[fid]) {
 		return hardcodedUsers[fid];
 	}
@@ -26,7 +27,14 @@ export const getUserFromFid = (fid: number): User => {
 		)
 		.get(fid) as User | undefined;
 	if (!user) {
-		throw new Error(`User with fid ${fid} not found in database`);
+		try {
+			const user = await getUserFromShim(fid);
+			return user;
+		} catch (e) {
+			throw new Error(
+				`User with fid ${fid} not found in database: ${e instanceof Error ? e.message : String(e)}`,
+			);
+		}
 	}
 	return user;
 };
@@ -83,11 +91,14 @@ export const tagCast = (cast: Cast) => {
 	);
 };
 
-export const queueLoop = async (casts: Cast[]) => {
+export const queueLoop = async (
+	casts: Cast[],
+	fullConversationsMode: boolean = true,
+) => {
 	for (const c of casts) {
 		tagCast(c);
 
-		if (c.thread_hash) {
+		if (fullConversationsMode && c.thread_hash) {
 			const conversation = await getConversation(c.thread_hash);
 			tagCast(conversation.conversation.cast);
 			if (VERBOSE) {
@@ -117,15 +128,18 @@ export const queueLoop = async (casts: Cast[]) => {
 			}
 		}
 
-		const replies = await getConversation(c.hash);
-		tagCast(replies.conversation.cast);
-		for (const p of replies.conversation.chronological_parent_casts ?? []) {
-			tagCast(p);
-		}
-		for (const dr of replies.conversation.cast.direct_replies) {
-			tagCast(dr);
-		}
+		if (fullConversationsMode) {
+			const replies = await getConversation(c.hash);
+			tagCast(replies.conversation.cast);
 
+			for (const p of replies.conversation.chronological_parent_casts ?? []) {
+				tagCast(p);
+			}
+
+			for (const dr of replies.conversation.cast.direct_replies) {
+				tagCast(dr);
+			}
+		}
 		if (VERBOSE) console.log(renderCast(c));
 	}
 };
