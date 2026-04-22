@@ -1,5 +1,14 @@
-import type { Cast, Embed, EmbedUrl, EmbedUrlMetadata } from "@neynar/nodejs-sdk/build/api";
-import { getCastFromHash, getUserFromFid } from "../jobs/read";
+import type {
+	Cast,
+	Embed,
+	EmbedUrl,
+	EmbedUrlMetadata,
+} from "@neynar/nodejs-sdk/build/api";
+import {
+	drainMissingCasts,
+	getCastFromHash,
+	getUserFromFid,
+} from "../jobs/read";
 import { renderCast } from "../jobs/write";
 import { pluralize } from "./helpers";
 
@@ -30,10 +39,17 @@ fid: ${renderedCast.fid}
 
 export const renderReplyHeader = async (cast: Cast): Promise<string> => {
 	const renderedCast = renderCast(cast);
-	const parentCast =
+	let parentCast =
 		renderedCast.parent_fid && renderedCast.parent_hash
 			? getCastFromHash(renderedCast.parent_hash, renderedCast.parent_fid)
 			: undefined;
+	if (!parentCast && renderedCast.parent_hash) {
+		await drainMissingCasts(5);
+		parentCast =
+			renderedCast.parent_fid && renderedCast.parent_hash
+				? getCastFromHash(renderedCast.parent_hash, renderedCast.parent_fid)
+				: undefined;
+	}
 	const parentCastTimestamp = parentCast?.timestamp;
 	const parentDtString = parentCastTimestamp
 		? new Date(parentCastTimestamp).toISOString().slice(0, 10).replace(/-/g, "")

@@ -50,9 +50,7 @@ const getCastsByParent = async (fid: number, hash: string) => {
 				fetchPage,
 			);
 
-			const messages = sift(
-				res.messages.filter((r) => r.data?.castAddBody),
-			);
+			const messages = sift(res.messages.filter((r) => r.data?.castAddBody));
 			allMessages.push(...messages);
 
 			// Get the page token

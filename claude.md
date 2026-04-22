@@ -20,8 +20,8 @@ This document provides technical context for AI coding agents working with the `
   - Uses `itty-fetcher` for HTTP requests
   - Implements SQLite caching (`db/cache.db3`) to avoid redundant API calls
   - Two API clients are configured:
-    - `api`: Standard Neynar API client using `NEYNAR_API_KEY`
-    - `x402api`: x402 payment-enabled client (configured but not currently used)
+    - `api`: Standard Neynar API client
+  - Note: current upstream base is hardcoded in `src/lib/neynar.ts`
   - Functions:
     - `getCronFeed(fid)`: Fetches user's casts (limit 150, no replies)
     - `getReplies(fid)`: Fetches user's replies (limit 50)
@@ -43,20 +43,6 @@ This document provides technical context for AI coding agents working with the `
   - Tables: `casts`, `replies`, `conversations`
   - Prevents redundant API calls on re-runs
 - **`db/queue.db3`**: SQLite database for job queue (created by job processing)
-
-## Environment Variables
-
-The code requires these environment variables (checked via `invariant`):
-- `NEYNAR_API_KEY`: Required for Neynar API access
-- `EOA_PRIVATE_KEY`: Required for x402 payment system (even if not actively using x402)
-
-## x402 Implementation Status
-
-The x402 payment system is **partially implemented**:
-- `x402api` client is configured in `src/lib/neynar.ts` (lines 39-45)
-- Uses `x402-fetch` package to wrap fetch with payment functionality
-- Currently **not actively used** - all API calls use the standard `api` client
-- To enable x402: switch from `api` to `x402api` in the function implementations
 
 ## Rate Limiting
 
@@ -89,7 +75,6 @@ The codebase currently does not implement rate limiting logic. Rate limit handli
 - Uses `itty-fetcher` for HTTP requests
 - Uses `radash` utilities (`diff`, `sift`, `unique`)
 - Uses `tiny-invariant` for runtime assertions
-- Uses `viem` for Ethereum wallet operations (x402)
 
 ## Known Limitations (WONTFIX)
 
