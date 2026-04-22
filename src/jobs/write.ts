@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
-import { pluralize } from "../lib/helpers";
+import { normalizeHash, pluralize } from "../lib/helpers";
 import {
 	renderEmbeds,
 	renderReplyFooter,
@@ -9,7 +9,7 @@ import {
 	renderTopLevelHeader,
 	renderUserHeader,
 } from "../lib/markdown";
-import { countReplies, getUserFromFid } from "./read";
+import { countReplies, getUserFromFid, hydrateReferencedParents } from "./read";
 
 const OUT_DIR = "out";
 const USERS_DIR = `${OUT_DIR}/_users_`;
@@ -20,11 +20,11 @@ export const renderCast = (cast: Cast) => {
 	// TODO: quote casts
 	// TODO: embeds
 	return {
-		hash: cast.hash,
+		hash: normalizeHash(cast.hash),
 		timestamp: cast.timestamp,
 		fid: cast.author?.fid,
 		parent_fid: cast.parent_author?.fid ?? undefined,
-		parent_hash: cast.parent_hash,
+		parent_hash: cast.parent_hash ? normalizeHash(cast.parent_hash) : undefined,
 
 		username: cast.author?.username,
 
@@ -97,7 +97,9 @@ export const castsLoop = async () => {
 
 		const castPath = `${userSubdir}/${dtString}-${tmString}-${hash.slice(2, 10)}.md`;
 		if (fs.existsSync(castPath)) {
-			continue;
+			const existing = fs.readFileSync(castPath, "utf8");
+			// Only rewrite files that previously had an unresolved parent pointer.
+			if (!existing.includes("<deleted>")) continue;
 		}
 		console.log("writing cast to", castPath);
 		const renderedCast = renderCast(hydratedCast);
@@ -121,6 +123,10 @@ ${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.chann
 };
 
 export const writeLoop = async () => {
-	fidsLoop();
-	castsLoop();
+	await fidsLoop();
+	// Ensure all referenced parent casts exist before writing files.
+	await hydrateReferencedParents(5);
+	await castsLoop();
+	// One more pass to write user files discovered during cast hydration/writes.
+	await fidsLoop();
 };

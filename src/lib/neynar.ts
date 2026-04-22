@@ -5,12 +5,8 @@ import type {
 	FeedResponse,
 } from "@neynar/nodejs-sdk/build/api";
 import { fetcher } from "itty-fetcher";
-import { diff, sift, sleep, unique } from "radash";
+import { diff, sift, unique } from "radash";
 import invariant from "tiny-invariant";
-import { createWalletClient, http } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { base } from "viem/chains";
-import { wrapFetchWithPayment } from "x402-fetch";
 import { getCastFromHash, tagCast } from "../jobs/read";
 
 const MAX_SIZE = 10000;
@@ -26,33 +22,9 @@ db.prepare(
 	"CREATE TABLE IF NOT EXISTS conversations (hash TEXT PRIMARY KEY, data TEXT)",
 ).run();
 
-invariant(process.env.NEYNAR_API_KEY, "NEYNAR_API_KEY is not set");
-invariant(process.env.EOA_PRIVATE_KEY, "EOA_PRIVATE_KEY is not set");
-
-const account = privateKeyToAccount(
-	`0x${process.env.EOA_PRIVATE_KEY.replace("0x", "")}`,
-);
-console.log("account:", account.address);
-const walletClient = createWalletClient({
-	account,
-	transport: http(),
-	chain: base,
-});
-// @ts-expect-error - partial typing of walletClient
-const fetchWithPay = wrapFetchWithPayment(fetch, walletClient);
-// biome-ignore lint/correctness/noUnusedVariables: placeholder
-const x402api = fetcher({
-	// @ts-expect-error - partial typing of fetchWithPay
-	fetch: fetchWithPay,
-	base: "https://api.neynar.com/v2",
-});
-
 const api = fetcher({
-	base: "https://api.neynar.com/v2",
-	headers: {
-		"x-api-key": process.env.NEYNAR_API_KEY,
-		"User-Agent": "curl/8.5.0",
-	},
+	base: "https://haatz.quilibrium.com/v2",
+	headers: { "User-Agent": "curl/8.5.0" },
 });
 
 /**
@@ -72,11 +44,7 @@ const retryWithSkip = async <T>(
 			// Log the error for debugging
 			if (i === 0) {
 				// Log first attempt error
-				if (
-					error &&
-					typeof error === "object" &&
-					"status" in error
-				) {
+				if (error && typeof error === "object" && "status" in error) {
 					const status = (error as { status?: number }).status;
 					const message =
 						"message" in error
@@ -454,14 +422,20 @@ export const getCasts = async (hashes: string[]): Promise<Cast[]> => {
 
 	if (unseenHashes.length > 0) {
 		try {
-			const res = await api.get<{ result: { casts: Cast[] } }>(
-				`/farcaster/casts/?casts=${unseenHashes.join(",")}`,
-			);
+			const res = await api.get<
+				| { result: { casts: Cast[] } }
+				| { casts: Cast[] }
+				| Record<string, unknown>
+			>(`/farcaster/casts/?casts=${unseenHashes.join(",")}`);
+			const fetchedCasts =
+				(res && typeof res === "object" && "result" in res
+					? (res as { result?: { casts?: Cast[] } }).result?.casts
+					: (res as { casts?: Cast[] }).casts) ?? [];
 			// update cache for unseen hashes
-			for (const cast of res.result.casts) {
+			for (const cast of fetchedCasts) {
 				tagCast(cast);
 			}
-			return [...cachedCasts, ...res.result.casts];
+			return [...cachedCasts, ...fetchedCasts];
 		} catch (error: unknown) {
 			console.error(
 				"Error getting casts",

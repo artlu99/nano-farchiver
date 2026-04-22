@@ -11,7 +11,7 @@ interface PartialShimUser {
 	username: string;
 	displayName: string;
 	pfpUrl: string;
-	bio: string
+	bio: string;
 }
 
 export const getUserFromShim = async (fid: number): Promise<User> => {
