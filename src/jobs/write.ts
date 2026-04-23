@@ -9,7 +9,12 @@ import {
 	renderTopLevelHeader,
 	renderUserHeader,
 } from "../lib/markdown";
-import { countReplies, getUserFromFid, hydrateReferencedParents } from "./read";
+import {
+	countReplies,
+	getUserFromFid,
+	hydrateReferencedParents,
+	isCastTombstoned,
+} from "./read";
 
 const OUT_DIR = "out";
 const USERS_DIR = `${OUT_DIR}/_users_`;
@@ -100,6 +105,10 @@ export const castsLoop = async () => {
 			const existing = fs.readFileSync(castPath, "utf8");
 			// Only rewrite files that previously had an unresolved parent pointer.
 			if (!existing.includes("<deleted>")) continue;
+			const renderedCast = renderCast(hydratedCast);
+			if (renderedCast.parent_hash && isCastTombstoned(renderedCast.parent_hash)) {
+				continue;
+			}
 		}
 		console.log("writing cast to", castPath);
 		const renderedCast = renderCast(hydratedCast);
