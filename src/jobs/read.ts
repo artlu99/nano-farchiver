@@ -22,7 +22,7 @@ db.prepare(
 
 const missingCastHashes = new Set<string>();
 
-const isCastDeleted = (hash: string): boolean => {
+export const isCastDeleted = (hash: string): boolean => {
 	const with0x = normalizeHash(hash);
 	const row = db
 		.query("SELECT 1 as one FROM deleted_casts WHERE hash = ?")

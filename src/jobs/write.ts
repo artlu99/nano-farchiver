@@ -13,7 +13,7 @@ import {
 	countReplies,
 	getUserFromFid,
 	hydrateReferencedParents,
-	isCastTombstoned,
+	isCastDeleted,
 } from "./read";
 
 const OUT_DIR = "out";
@@ -106,7 +106,7 @@ export const castsLoop = async () => {
 			// Only rewrite files that previously had an unresolved parent pointer.
 			if (!existing.includes("<deleted>")) continue;
 			const renderedCast = renderCast(hydratedCast);
-			if (renderedCast.parent_hash && isCastTombstoned(renderedCast.parent_hash)) {
+			if (renderedCast.parent_hash && isCastDeleted(renderedCast.parent_hash)) {
 				continue;
 			}
 		}
