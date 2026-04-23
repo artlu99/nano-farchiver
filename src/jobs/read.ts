@@ -16,12 +16,53 @@ db.prepare(
 db.prepare(
 	"CREATE TABLE IF NOT EXISTS casts (hash TEXT PRIMARY KEY, fid INTEGER, data TEXT, parent_fid INTEGER, parent_hash TEXT)",
 ).run();
+db.prepare(
+	"CREATE TABLE IF NOT EXISTS deleted_casts (hash TEXT PRIMARY KEY, deleted_at INTEGER, reason TEXT)",
+).run();
 
 const missingCastHashes = new Set<string>();
+
+const isCastDeleted = (hash: string): boolean => {
+	const with0x = normalizeHash(hash);
+	const row = db
+		.query("SELECT 1 as one FROM deleted_casts WHERE hash = ?")
+		.get(with0x) as { one: 1 } | undefined;
+	return !!row;
+};
+
+export const markCastsDeleted = (
+	hashes: string[],
+	reason: string,
+	deletedAt: number = Date.now(),
+): number => {
+	if (hashes.length === 0) return 0;
+	const insert = db.prepare(
+		"INSERT OR IGNORE INTO deleted_casts (hash, deleted_at, reason) VALUES (?, ?, ?)",
+	);
+	const tx = db.transaction((rows: { hash: string }[]) => {
+		for (const r of rows) {
+			insert.run(normalizeHash(r.hash), deletedAt, reason);
+		}
+	});
+	tx(hashes.map((hash) => ({ hash })));
+	return hashes.length;
+};
+
+export const filterNonDeletedCastHashes = (hashes: string[]): string[] => {
+	if (hashes.length === 0) return [];
+	const normalized = hashes.map(normalizeHash);
+	const placeholders = normalized.map(() => "?").join(", ");
+	const deleted = db
+		.query(`SELECT hash FROM deleted_casts WHERE hash IN (${placeholders})`)
+		.all(...normalized) as { hash: string }[];
+	const deletedSet = new Set(deleted.map((r) => r.hash));
+	return normalized.filter((h) => !deletedSet.has(h));
+};
 
 const hasCastInDb = (hash: string): boolean => {
 	const with0x = normalizeHash(hash);
 	const without0x = with0x.replace(/^0x/, "");
+	if (isCastDeleted(with0x) || isCastDeleted(without0x)) return true;
 	const row =
 		(db.query("SELECT 1 as one FROM casts WHERE hash = ?").get(with0x) as
 			| { one: 1 }
@@ -57,6 +98,9 @@ export const getCastFromHash = (
 ): Cast | undefined => {
 	const with0x = normalizeHash(hash);
 	const without0x = with0x.replace(/^0x/, "");
+	if (isCastDeleted(with0x) || isCastDeleted(without0x)) {
+		return undefined;
+	}
 	const cast = fid
 		? ((db
 				.query("SELECT data FROM casts WHERE hash = ? AND fid = ?")
@@ -119,6 +163,7 @@ SELECT DISTINCT parent_hash as hash
 FROM casts
 WHERE parent_hash IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM casts c2 WHERE c2.hash = casts.parent_hash)
+  AND NOT EXISTS (SELECT 1 FROM deleted_casts d WHERE d.hash = casts.parent_hash)
 `,
 				)
 				.all() as { hash: string }[]
