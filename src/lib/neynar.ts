@@ -7,7 +7,13 @@ import type {
 import { fetcher } from "itty-fetcher";
 import { diff, sift, unique } from "radash";
 import invariant from "tiny-invariant";
-import { getCastFromHash, tagCast } from "../jobs/read";
+import {
+	filterNonDeletedCastHashes,
+	getCastFromHash,
+	markCastsDeleted,
+	tagCast,
+} from "../jobs/read";
+import { withTimeout } from "./timeouts";
 
 const MAX_SIZE = 10000;
 
@@ -421,12 +427,29 @@ export const getCasts = async (hashes: string[]): Promise<Cast[]> => {
 	const unseenHashes = diff(hashes, seenHashes);
 
 	if (unseenHashes.length > 0) {
+		const fetchHashes = filterNonDeletedCastHashes(unseenHashes);
+		if (fetchHashes.length === 0) return cachedCasts;
 		try {
-			const res = await api.get<
-				| { result: { casts: Cast[] } }
-				| { casts: Cast[] }
-				| Record<string, unknown>
-			>(`/farcaster/casts/?casts=${unseenHashes.join(",")}`);
+			const res = await withTimeout(
+				api.get<
+					| { result: { casts: Cast[] } }
+					| { casts: Cast[] }
+					| Record<string, unknown>
+				>(`/farcaster/casts/?casts=${fetchHashes.join(",")}`),
+				{
+					timeoutMs: 5000, // 5 seconds
+					timeoutMessage: "Timed out waiting for response (5s)",
+					warnAfterMs: 3000, // 3 seconds
+					warn: () => {
+						for (const hash of fetchHashes) {
+							console.log(`still waiting for response for hash ${hash}`);
+						}
+					},
+					onTimeout: () => {
+						markCastsDeleted(fetchHashes, "timeout");
+					},
+				},
+			);
 			const fetchedCasts =
 				(res && typeof res === "object" && "result" in res
 					? (res as { result?: { casts?: Cast[] } }).result?.casts
