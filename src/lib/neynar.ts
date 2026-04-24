@@ -1,3 +1,4 @@
+import { mkdirSync } from "node:fs";
 import { Database } from "bun:sqlite";
 import type {
 	Cast,
@@ -10,6 +11,7 @@ import invariant from "tiny-invariant";
 import {
 	filterNonDeletedCastHashes,
 	getCastFromHash,
+	hasCastInDb,
 	markCastsDeleted,
 	tagCast,
 } from "../jobs/read";
@@ -17,7 +19,8 @@ import { withTimeout } from "./timeouts";
 
 const MAX_SIZE = 10000;
 
-const db = new Database("db/cache.db3", { strict: true });
+mkdirSync("db", { recursive: true });
+const db = new Database("db/cache.db3");
 db.prepare(
 	"CREATE TABLE IF NOT EXISTS casts (fid INTEGER PRIMARY KEY, data TEXT)",
 ).run();
@@ -154,6 +157,16 @@ const paginateFeedResponse = async (
 			}
 
 			allCasts.push(...res.casts);
+
+			// Short-circuit for incremental runs: if the oldest cast on this page
+			// is already in queue.db3, all subsequent pages will be older and also known.
+			const lastCastOnPage = res.casts.at(-1);
+			if (lastCastOnPage && hasCastInDb(lastCastOnPage.hash)) {
+				console.log(
+					`Stopping pagination: oldest cast on page (${lastCastOnPage.hash.slice(0, 10)}...) already in queue`,
+				);
+				hasMore = false;
+			}
 
 			// Check if there's a next page
 			const previousCursor = cursor;

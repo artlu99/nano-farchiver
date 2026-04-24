@@ -30,10 +30,26 @@ Bundle the outputs into a gzipped tarball:
 bun bundle
 ```
 
-(Optional) Clean up:
+### Incremental updates
+
+After an initial run, subsequent runs automatically detect and fetch only new casts by checking against the local queue (`db/queue.db3`). To prepare for an incremental run:
+
 ```bash
-bun clean  # Removes out/ and out.tar.gz
-bun clear  # Removes db/queue.db3
+bun clear  # Clear the network cache so fresh data is fetched
+bun doIt   # Fetches only new casts, skips already-written output files
+```
+
+To archive the output and start fresh for the same FID:
+```bash
+bun bundle    # Create out.tar.gz
+bun clear     # Clear the network cache
+bun doIt      # Incremental run
+```
+
+To switch to a different FID:
+```bash
+bun clean  # Removes all databases and output — clean slate
+bun doIt   # Full fetch for the new FID
 ```
 
 ### Web server
@@ -58,12 +74,11 @@ Starts a web server (default port 3000, configurable via `PORT` env var) with th
 
 **Rate limit errors:**
 - If you see rate limit errors, your upstream may be throttling requests
-- For debugging: The built-in caching system (`db/cache.db3`) helps avoid redundant API calls
 - For production use: consider using a higher-throughput upstream or adding rate limiting
 
 **Cache / state issues:**
-- Clear the cache with: `bun clear` (removes `db/queue.db3`)
-- Note: This doesn't clear the main cache database `db/cache.db3`
+- `bun clear` — removes the network cache (`db/cache.db3`) so the next run fetches fresh data from the API
+- `bun clean` — removes all databases and output for a completely fresh start
 
 ## Development
 

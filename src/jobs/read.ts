@@ -9,7 +9,7 @@ import { renderCast } from "./write";
 
 const VERBOSE = false;
 
-const db = new Database("db/queue.db3", { strict: true });
+const db = new Database("db/queue.db3");
 db.prepare(
 	"CREATE TABLE IF NOT EXISTS users (fid INTEGER PRIMARY KEY, username TEXT, displayName TEXT, avatar TEXT, bio TEXT)",
 ).run();
@@ -59,7 +59,7 @@ export const filterNonDeletedCastHashes = (hashes: string[]): string[] => {
 	return normalized.filter((h) => !deletedSet.has(h));
 };
 
-const hasCastInDb = (hash: string): boolean => {
+export const hasCastInDb = (hash: string): boolean => {
 	const with0x = normalizeHash(hash);
 	const without0x = with0x.replace(/^0x/, "");
 	if (isCastDeleted(with0x) || isCastDeleted(without0x)) return true;

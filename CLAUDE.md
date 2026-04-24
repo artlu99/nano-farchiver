@@ -41,8 +41,12 @@ This document provides technical context for AI coding agents working with the `
 ### Data Storage
 - **`db/cache.db3`**: SQLite database for API response caching
   - Tables: `casts`, `replies`, `conversations`
-  - Prevents redundant API calls on re-runs
-- **`db/queue.db3`**: SQLite database for job queue (created by job processing)
+  - Within-run dedup: prevents redundant API calls during a single `bun doIt` invocation (e.g., `getConversation` called multiple times for the same thread hash)
+  - Deleted by `bun clear` between runs to ensure fresh data from the API
+- **`db/queue.db3`**: SQLite database for the processed cast archive
+  - Tables: `casts` (full serialized cast data keyed by hash), `users`, `deleted_casts`
+  - Persists between runs and enables incremental fetching: `paginateFeedResponse` checks the oldest cast on each page against this database and stops paginating once it hits known territory
+  - Preserved by `bun clear`, deleted by `bun clean`
 
 ## Rate Limiting
 
@@ -55,12 +59,10 @@ The codebase currently does not implement rate limiting logic. Rate limit handli
 
 **Current design:**
 - Relies on external rate limits from Neynar API
-- Uses caching (`db/cache.db3`) to reduce redundant API calls
+- Uses `db/cache.db3` for within-run dedup (deleted between runs via `bun clear`)
+- Uses `db/queue.db3` for incremental pagination: `paginateFeedResponse` stops fetching once it hits casts already in the queue
 
 **Debugging rate limit issues:**
-- Free tier API keys are limited to ~6 queries/second
-- Rate limit errors indicate you've hit the API's rate limit
-- Caching helps reduce redundant calls on subsequent runs
 
 **If implementing custom rate limiting:**
 - API calls are made in `src/lib/neynar.ts` via the `api` fetcher
@@ -97,5 +99,5 @@ From README:
 - Update TypeScript types from `@neynar/nodejs-sdk` if needed
 
 **To change caching behavior:**
-- Modify SQLite queries in `src/lib/neynar.ts`
-- Cache database is `db/cache.db3`
+- Within-run dedup: `db/cache.db3` in `src/lib/neynar.ts`
+- Incremental pagination: `hasCastInDb()` check in `paginateFeedResponse()` uses `db/queue.db3` from `src/jobs/read.ts`
