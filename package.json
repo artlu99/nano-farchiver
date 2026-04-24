@@ -4,8 +4,8 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"clean": "rm -rf out out.tar.gz",
-		"clear": "rm db/queue.db3",
+		"clean": "rm -rf db/ out/ out.tar.gz",
+		"clear": "rm db/cache.db3",
 		"doIt": "bun run src/index.ts",
 		"bundle": "tar -czvf out.tar.gz out"
 	},

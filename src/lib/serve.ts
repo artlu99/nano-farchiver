@@ -81,7 +81,9 @@ function serveDirectory(dirPath: string, relativePath: string): Response {
 	html += `<p>${entries.length} ${entries.length === 1 ? "entry" : "entries"}</p>`;
 	html += `<ul class="entries">`;
 	for (const entry of entries) {
-		const href = posix.join("/browse", relativePath, entry.name) + (entry.isDir ? "/" : "");
+		const href =
+			posix.join("/browse", relativePath, entry.name) +
+			(entry.isDir ? "/" : "");
 		const cls = entry.isDir ? ' class="dir"' : "";
 		html += `<li${cls}><a href="${href}">${entry.name}${entry.isDir ? "/" : ""}</a></li>`;
 	}
