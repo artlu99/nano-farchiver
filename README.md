@@ -18,6 +18,8 @@
 
 ## Running
 
+### CLI
+
 Run the archiver:
 ```bash
 bun doIt
@@ -25,7 +27,7 @@ bun doIt
 
 Bundle the outputs into a gzipped tarball:
 ```bash
-bun run bundle
+bun bundle
 ```
 
 (Optional) Clean up:
@@ -33,6 +35,24 @@ bun run bundle
 bun clean  # Removes out/ and out.tar.gz
 bun clear  # Removes db/queue.db3
 ```
+
+### Web server
+
+```bash
+bun server.ts
+```
+
+Starts a web server (default port 3000, configurable via `PORT` env var) with the following endpoints:
+
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Health check — `{ "status": "ok" }` |
+| `GET /uptime` | Seconds since server started |
+| `GET /status` | Aggregate outstanding/completed cast counts |
+| `GET /status?fid=<number>` | Per-user outstanding/completed counts |
+| `POST /doIt` | Trigger the archiver job (202 if started, 429 if already running) |
+| `GET /browse/**` | Browse the `out/` directory — lists folders, renders `.md` files as HTML |
+| `GET /llms.txt` | Machine-readable endpoint descriptions |
 
 ## Troubleshooting
 

@@ -6,7 +6,7 @@ import { getCronFeed, getReplies } from "./lib/neynar";
 const FID = 3319217;
 const FULL_CONVERSATIONS_MODE = true;
 
-const doIt = async (fid: number) => {
+export const doIt = async (fid: number) => {
 	try {
 		const casts = await getCronFeed(fid);
 		const replies = await getReplies(fid);
@@ -26,4 +26,5 @@ const doIt = async (fid: number) => {
 		throw error;
 	}
 };
-doIt(FID);
+
+if (import.meta.main) doIt(FID);

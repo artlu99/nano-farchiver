@@ -15,21 +15,16 @@ export const withTimeout = async <T>(
 
 	try {
 		return await new Promise<T>((resolve, reject) => {
-			timeoutId = setTimeout(
-				() => {
-					if (options.onTimeout) {
-						Promise.resolve()
-							.then(() => options.onTimeout?.())
-							.catch((e) =>
-								console.error(
-									e instanceof Error ? e.message : String(e),
-								),
-							);
-					}
-					reject(new Error(options.timeoutMessage));
-				},
-				options.timeoutMs,
-			);
+			timeoutId = setTimeout(() => {
+				if (options.onTimeout) {
+					Promise.resolve()
+						.then(() => options.onTimeout?.())
+						.catch((e) =>
+							console.error(e instanceof Error ? e.message : String(e)),
+						);
+				}
+				reject(new Error(options.timeoutMessage));
+			}, options.timeoutMs);
 
 			if (options.warnAfterMs !== undefined && options.warn) {
 				warnId = setTimeout(options.warn, options.warnAfterMs);
@@ -43,4 +38,3 @@ export const withTimeout = async <T>(
 		if (warnId) clearTimeout(warnId);
 	}
 };
-
