@@ -67,6 +67,7 @@ Starts a web server (default port 3000, configurable via `PORT` env var) with th
 | `GET /status` | Aggregate outstanding/completed cast counts |
 | `GET /status?fid=<number>` | Per-user outstanding/completed counts |
 | `POST /doIt` | Trigger the archiver job (202 if started, 429 if already running) |
+| `POST /clear` | Clear the network cache so the next `/doIt` fetches fresh data |
 | `GET /browse/**` | Browse the `out/` directory — lists folders, renders `.md` files as HTML |
 | `GET /llms.txt` | Machine-readable endpoint descriptions |
 

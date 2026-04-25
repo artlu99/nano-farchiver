@@ -1,8 +1,26 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, posix, resolve, sep } from "node:path";
 import { marked } from "marked";
+import invariant from "tiny-invariant";
 
 const OUT_DIR = resolve("out");
+
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
+
+function extractCastText(body: string): string {
+	const parts = body.split(/\n--\n/);
+	if (parts.length >= 2) {
+		invariant(parts[1] !== undefined, "parts[1] is undefined");
+		return parts[1].trim();
+	}
+	return body.trim();
+}
 
 function parseFrontmatter(content: string): {
 	frontmatter: Record<string, string>;
@@ -38,6 +56,10 @@ dt{font-weight:600}dd{margin:0 0 .25rem 1rem;color:#555}
 ul.entries{list-style:none;padding:0}
 ul.entries li{padding:.25rem 0}
 .dir{font-weight:600}
+.preview{background:#f0f9ff;border-left:3px solid #2563eb;padding:1rem;margin-bottom:1.5rem;border-radius:0 4px 4px 0}
+.preview-text{margin:0;font-size:1.1rem}
+.pay-link{display:inline-block;margin-top:1rem;padding:.5rem 1rem;background:#2563eb;color:#fff;text-decoration:none;border-radius:4px}
+.pay-link:hover{background:#1d4ed8;text-decoration:none}
 </style>
 </head>
 <body>
@@ -60,7 +82,7 @@ function breadcrumb(relativePath: string, filename?: string): string {
 	return html;
 }
 
-function serveDirectory(dirPath: string, relativePath: string): Response {
+function serveDirectory(dirPath: string, relativePath: string, titleText?: string): Response {
 	let entries: { name: string; isDir: boolean }[];
 	try {
 		const dirents = readdirSync(dirPath, { withFileTypes: true });
@@ -75,7 +97,7 @@ function serveDirectory(dirPath: string, relativePath: string): Response {
 		return new Response("not found", { status: 404 });
 	}
 
-	const title = relativePath || "out";
+	const title = titleText || relativePath || "out";
 	let html = breadcrumb(relativePath);
 	html += `<h1>${basename(dirPath)}</h1>`;
 	html += `<p>${entries.length} ${entries.length === 1 ? "entry" : "entries"}</p>`;
@@ -122,7 +144,7 @@ function serveFile(filePath: string, relativePath: string): Response {
 	});
 }
 
-export function serveBrowse(pathname: string): Response {
+export function serveBrowse(pathname: string, titleText?: string): Response {
 	const relativePath = decodeURIComponent(
 		pathname === "/browse" || pathname === "/browse/"
 			? ""
@@ -137,7 +159,7 @@ export function serveBrowse(pathname: string): Response {
 	try {
 		const stat = statSync(resolved);
 		if (stat.isDirectory()) {
-			return serveDirectory(resolved, relativePath);
+			return serveDirectory(resolved, relativePath, titleText);
 		}
 		if (stat.isFile()) {
 			return serveFile(resolved, relativePath);
@@ -147,4 +169,68 @@ export function serveBrowse(pathname: string): Response {
 	}
 
 	return new Response("not found", { status: 404 });
+}
+
+export function serveBrowseFile(pathname: string): Response {
+	const relativePath = decodeURIComponent(
+		pathname.slice("/browse/".length),
+	).replace(/\/+$/, "");
+	const resolved = resolve(join(OUT_DIR, relativePath));
+
+	if (!resolved.startsWith(OUT_DIR + sep)) {
+		return new Response("forbidden", { status: 403 });
+	}
+
+	try {
+		const stat = statSync(resolved);
+		if (stat.isFile()) {
+			return serveFile(resolved, relativePath);
+		}
+	} catch {
+		// fall through to 404
+	}
+
+	return new Response("not found", { status: 404 });
+}
+
+export function servePreview(pathname: string, previewLength = 20): Response {
+	const relativePath = decodeURIComponent(
+		pathname.slice("/browse/".length),
+	).replace(/\/+$/, "");
+	const resolved = resolve(join(OUT_DIR, relativePath));
+
+	if (!resolved.startsWith(OUT_DIR + sep)) {
+		return new Response("forbidden", { status: 403 });
+	}
+
+	let content: string;
+	try {
+		content = readFileSync(resolved, "utf-8");
+	} catch {
+		return new Response("not found", { status: 404 });
+	}
+
+	const { frontmatter, body } = parseFrontmatter(content);
+	const title = basename(resolved, ".md");
+	const castText = extractCastText(body);
+	const truncated = castText.slice(0, previewLength);
+
+	let html = breadcrumb(relativePath, resolved);
+
+	if (Object.keys(frontmatter).length > 0) {
+		html += `<dl>`;
+		for (const [key, value] of Object.entries(frontmatter)) {
+			html += `<dt>${key}</dt><dd>${value}</dd>`;
+		}
+		html += `</dl>`;
+	}
+
+	html += `<div class="preview">`;
+	html += `<p class="preview-text">${escapeHtml(truncated)}${castText.length > previewLength ? "..." : ""}</p>`;
+	html += `<a class="pay-link" href="${pathname}?pay=1">Read full cast via x402</a>`;
+	html += `</div>`;
+
+	return new Response(renderPage(title, html), {
+		headers: { "Content-Type": "text/html; charset=utf-8" },
+	});
 }
