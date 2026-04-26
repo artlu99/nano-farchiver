@@ -1,5 +1,5 @@
-import { mkdirSync } from "node:fs";
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
 import type {
 	Cast,
 	Conversation,
@@ -19,17 +19,20 @@ import { withTimeout } from "./timeouts";
 
 const MAX_SIZE = 10000;
 
-mkdirSync("db", { recursive: true });
-const db = new Database("db/cache.db3");
-db.prepare(
-	"CREATE TABLE IF NOT EXISTS casts (fid INTEGER PRIMARY KEY, data TEXT)",
-).run();
-db.prepare(
-	"CREATE TABLE IF NOT EXISTS replies (fid INTEGER PRIMARY KEY, data TEXT)",
-).run();
-db.prepare(
-	"CREATE TABLE IF NOT EXISTS conversations (hash TEXT PRIMARY KEY, data TEXT)",
-).run();
+const db = () => {
+	mkdirSync("db", { recursive: true });
+	const db = new Database("db/cache.db3");
+	db.prepare(
+		"CREATE TABLE IF NOT EXISTS casts (fid INTEGER PRIMARY KEY, data TEXT)",
+	).run();
+	db.prepare(
+		"CREATE TABLE IF NOT EXISTS replies (fid INTEGER PRIMARY KEY, data TEXT)",
+	).run();
+	db.prepare(
+		"CREATE TABLE IF NOT EXISTS conversations (hash TEXT PRIMARY KEY, data TEXT)",
+	).run();
+	return db;
+};
 
 const api = fetcher({
 	base: "https://haatz.quilibrium.com/v2",
@@ -236,7 +239,7 @@ const paginateFeedResponse = async (
 
 export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
 	// Check cache first
-	const query = db.query(`SELECT data FROM casts WHERE fid = $fid`);
+	const query = db().query(`SELECT data FROM casts WHERE fid = $fid`);
 	const cached = (await query.get(fid)) as { data: string } | undefined;
 	if (cached) {
 		return JSON.parse(cached.data) as FeedResponse;
@@ -249,7 +252,7 @@ export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
 	});
 
 	// Cache the complete paginated result
-	db.prepare("INSERT OR REPLACE INTO casts (fid, data) VALUES (?, ?)").run(
+	db().prepare("INSERT OR REPLACE INTO casts (fid, data) VALUES (?, ?)").run(
 		fid,
 		JSON.stringify(res),
 	);
@@ -259,7 +262,7 @@ export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
 
 export const getReplies = async (fid: number): Promise<FeedResponse> => {
 	// Check cache first
-	const query = db.query(`SELECT data FROM replies WHERE fid = $fid`);
+	const query = db().query(`SELECT data FROM replies WHERE fid = $fid`);
 	const cached = (await query.get(fid)) as { data: string } | undefined;
 	if (cached) {
 		return JSON.parse(cached.data) as FeedResponse;
@@ -276,7 +279,7 @@ export const getReplies = async (fid: number): Promise<FeedResponse> => {
 	);
 
 	// Cache the complete paginated result
-	db.prepare("INSERT OR REPLACE INTO replies (fid, data) VALUES (?, ?)").run(
+	db().prepare("INSERT OR REPLACE INTO replies (fid, data) VALUES (?, ?)").run(
 		fid,
 		JSON.stringify(res),
 	);
@@ -405,7 +408,7 @@ const paginateConversation = async (
 
 export const getConversation = async (hash: string): Promise<Conversation> => {
 	// Check cache first
-	const query = db.query(`SELECT data FROM conversations WHERE hash = $hash`);
+	const query = db().query(`SELECT data FROM conversations WHERE hash = $hash`);
 	const cached = (await query.get(hash)) as { data: string } | undefined;
 	if (cached) {
 		return JSON.parse(cached.data) as Conversation;
@@ -421,7 +424,7 @@ export const getConversation = async (hash: string): Promise<Conversation> => {
 	});
 
 	// Cache the complete paginated result
-	db.prepare(
+	db().prepare(
 		"INSERT OR REPLACE INTO conversations (hash, data) VALUES (?, ?)",
 	).run(hash, JSON.stringify(res));
 

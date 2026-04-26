@@ -82,7 +82,11 @@ function breadcrumb(relativePath: string, filename?: string): string {
 	return html;
 }
 
-function serveDirectory(dirPath: string, relativePath: string, titleText?: string): Response {
+function serveDirectory(
+	dirPath: string,
+	relativePath: string,
+	titleText?: string,
+): Response {
 	let entries: { name: string; isDir: boolean }[];
 	try {
 		const dirents = readdirSync(dirPath, { withFileTypes: true });
@@ -91,7 +95,8 @@ function serveDirectory(dirPath: string, relativePath: string, titleText?: strin
 			.map((d) => ({ name: d.name, isDir: d.isDirectory() }))
 			.sort((a, b) => {
 				if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-				return a.name.localeCompare(b.name);
+				if (a.isDir && b.isDir) return a.name.localeCompare(b.name);
+				return b.name.localeCompare(a.name);
 			});
 	} catch {
 		return new Response("not found", { status: 404 });
