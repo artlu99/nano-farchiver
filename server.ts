@@ -9,6 +9,11 @@ import {
 	x402HTTPResourceServer,
 	x402ResourceServer,
 } from "@x402/core/server";
+import {
+	FacilitatorResponseError,
+	SettleError,
+	VerifyError,
+} from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import type { PaywallConfig } from "@x402/hono";
 import { paymentMiddlewareFromHTTPServer } from "@x402/hono";
@@ -19,6 +24,44 @@ import { doIt } from "./src/index";
 import { serveBrowse, serveBrowseFile, servePreview } from "./src/lib/serve";
 import { withTimeout } from "./src/lib/timeouts";
 
+/**
+ * Bun keeps `Request.url` as `http://...` when TLS terminates at Cloudflare / a tunnel,
+ * but the browser page is `https://...`. The x402 paywall then does
+ * `fetch(window.x402.currentUrl, { headers: { "PAYMENT-SIGNATURE": ... } })`; if that
+ * URL is `http://` from the server, Safari blocks it as mixed content ("Load failed").
+ *
+ * Set `PUBLIC_APP_URL` if the tunnel host differs from what Bun sees.
+ *  Otherwise we trust `x-forwarded-proto` / `x-forwarded-host`.
+ */
+function rewriteRequestUrlForPublicClient(request: Request): Request {
+	const publicBase = process.env.PUBLIC_APP_URL?.replace(/\/+$/, "");
+	try {
+		const incoming = new URL(request.url);
+		if (publicBase) {
+			const fixed = new URL(incoming.pathname + incoming.search, `${publicBase}/`);
+			return new Request(fixed.href, request);
+		}
+		const forwardedProto = request.headers
+			.get("x-forwarded-proto")
+			?.split(",")[0]
+			?.trim()
+			.toLowerCase();
+		if (forwardedProto === "https" && incoming.protocol === "http:") {
+			incoming.protocol = "https:";
+			const forwardedHost = request.headers
+				.get("x-forwarded-host")
+				?.split(",")[0]
+				?.trim();
+			const host = forwardedHost || request.headers.get("host");
+			if (host) incoming.host = host;
+			return new Request(incoming.href, request);
+		}
+	} catch {
+		return request;
+	}
+	return request;
+}
+
 const startedAt = Date.now();
 
 const LOCK_PATH = "db/doIt.lock";
@@ -26,11 +69,41 @@ const LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const JOB_TIMEOUT_MS = LOCK_TTL_MS - 5000; // slightly less than TTL
 const DEFAULT_FID = 3319217;
 const DEFAULT_TITLE = "decent-artlu";
-const X402_FACILITATOR_URL = "https://facilitator.xpay.sh" as const;
-const PAY_TO_ADDRESS = "0x094f1608960A3cb06346cFd55B10b3cEc4f72c78";
-const X402_BROWSE_PRICE = "$0.001" as const;
+const X402_FACILITATOR_URL = "https://facilitator.artlu.xyz" as const;
+/** Must match the facilitator’s configured bearer token or `/verify` and `/settle` return 401. */
+const X402_API_KEY = process.env.X402_API_KEY;
+if (!X402_API_KEY) {
+	console.warn(
+		`[nano-farchiver] X402_API_KEY is not set. Facilitator calls to ${X402_FACILITATOR_URL} (/verify, /settle, /supported) will get 401 if that service requires auth.`,
+	);
+}
+const PAY_TO_ADDRESS = "0xAa591218305E621D8A128309e655A91e49A87a92";
+const X402_BROWSE_PRICE = "$0.01" as const;
 const X402_BROWSE_NETWORK = "eip155:8453" as const; // Base mainnet
 const X402_BROWSE_DESCRIPTION = "Read archived cast" as const;
+
+/**
+ * Optional: `X402_MAX_TIMEOUT_SECONDS` — forwarded validity from "now" at sign time (still subject to +600
+ * on the signed window as above). Parsed as a positive integer; invalid values fall back to default.
+ */
+const X402_BROWSE_MAX_TIMEOUT_DEFAULT_SECONDS = 15 * 60; // 900s forward skew from @x402/evm
+
+function browseMaxTimeoutSecondsFromEnv(): number {
+	const raw = process.env.X402_MAX_TIMEOUT_SECONDS;
+	if (raw === undefined || raw === "") {
+		return X402_BROWSE_MAX_TIMEOUT_DEFAULT_SECONDS;
+	}
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		console.warn(
+			`[nano-farchiver] Invalid X402_MAX_TIMEOUT_SECONDS=${JSON.stringify(raw)}; using default ${X402_BROWSE_MAX_TIMEOUT_DEFAULT_SECONDS}`,
+		);
+		return X402_BROWSE_MAX_TIMEOUT_DEFAULT_SECONDS;
+	}
+	return parsed;
+}
+
+const X402_BROWSE_MAX_TIMEOUT_SECONDS = browseMaxTimeoutSecondsFromEnv();
 const X402_ALLOWLIST =
 	process.env.X402_ALLOWLIST?.split(",")
 		.map((s) => s.trim())
@@ -38,13 +111,94 @@ const X402_ALLOWLIST =
 		.map((addr) => getAddress(addr as `0x${string}`)) ?? [];
 const x402Allowlist = new Set(X402_ALLOWLIST);
 
+/** JSON for logs (BigInt-safe); avoids throwing on circular structures. */
+function jsonForLog(value: unknown): string {
+	try {
+		return JSON.stringify(
+			value,
+			(_k, v) => (typeof v === "bigint" ? v.toString() : v),
+			2,
+		);
+	} catch {
+		return String(value);
+	}
+}
+
 const facilitatorClient = new HTTPFacilitatorClient({
 	url: X402_FACILITATOR_URL,
+	createAuthHeaders: async () => {
+		const auth = X402_API_KEY
+			? { Authorization: `Bearer ${X402_API_KEY}` }
+			: ({} as Record<string, string>);
+		return {
+			supported: { ...auth },
+			verify: { ...auth },
+			settle: { ...auth },
+		};
+	},
 });
-const x402Server = new x402ResourceServer(facilitatorClient).register(
-	X402_BROWSE_NETWORK,
-	new ExactEvmScheme(),
-);
+const x402Server = new x402ResourceServer(facilitatorClient)
+	.register(X402_BROWSE_NETWORK, new ExactEvmScheme())
+	.onVerifyFailure(async (ctx) => {
+		console.error(
+			"[x402] verify failed:",
+			ctx.error instanceof Error ? ctx.error.message : ctx.error,
+		);
+	})
+	.onBeforeSettle(async (ctx) => {
+		console.log("[x402] settle begin (calling facilitator POST /settle)", {
+			paymentPayload: jsonForLog(ctx.paymentPayload),
+			requirements: jsonForLog(ctx.requirements),
+		});
+	})
+	.onAfterSettle(async (ctx) => {
+		const r = ctx.result;
+		const tc = ctx.transportContext as
+			| { responseBody?: Buffer | string; responseHeaders?: Record<string, string> }
+			| undefined;
+		let responseBodyBytes: number | undefined;
+		if (tc?.responseBody !== undefined) {
+			responseBodyBytes = Buffer.isBuffer(tc.responseBody)
+				? tc.responseBody.length
+				: typeof tc.responseBody === "string"
+					? Buffer.byteLength(tc.responseBody)
+					: undefined;
+		}
+		console.log("[x402] settle done (facilitator returned parsed body)", {
+			success: r.success,
+			fullResult: jsonForLog(r),
+			paymentPayload: jsonForLog(ctx.paymentPayload),
+			requirements: jsonForLog(ctx.requirements),
+			transportContextKeys:
+				tc && typeof tc === "object" ? Object.keys(tc) : [],
+			responseBodyBytes,
+		});
+	})
+	.onSettleFailure(async (ctx) => {
+		const err = ctx.error;
+		const errorDetails =
+			err instanceof SettleError
+				? {
+						name: err.name,
+						message: err.message,
+						statusCode: err.statusCode,
+						errorReason: err.errorReason,
+						errorMessage: err.errorMessage,
+						payer: err.payer,
+						transaction: err.transaction,
+						network: err.network,
+					}
+				: err instanceof FacilitatorResponseError
+					? { name: err.name, message: err.message }
+					: err instanceof Error
+						? { name: err.name, message: err.message, stack: err.stack }
+						: { thrown: String(err) };
+		console.error("[x402] settle failure (exception or pre-parse)", {
+			error: errorDetails,
+			paymentPayload: jsonForLog(ctx.paymentPayload),
+			requirements: jsonForLog(ctx.requirements),
+		});
+	});
 
 const x402Routes = {
 	"GET /browse/*": {
@@ -53,6 +207,7 @@ const x402Routes = {
 			price: X402_BROWSE_PRICE,
 			network: X402_BROWSE_NETWORK,
 			payTo: PAY_TO_ADDRESS,
+			maxTimeoutSeconds: X402_BROWSE_MAX_TIMEOUT_SECONDS,
 		},
 		description: X402_BROWSE_DESCRIPTION,
 	},
@@ -211,13 +366,22 @@ const x402Gate = paymentMiddlewareFromHTTPServer(
 
 async function verifyX402AndGetPayer(c: Parameters<typeof x402Gate>[0]) {
 	const paymentSignature =
-		c.req.header("payment-signature") ?? c.req.header("PAYMENT-SIGNATURE");
-	if (!paymentSignature) return undefined;
+		c.req.header("payment-signature") ??
+		c.req.header("PAYMENT-SIGNATURE") ??
+		c.req.header("Payment-Signature") ??
+		c.req.header("x-payment") ??
+		c.req.header("X-Payment") ??
+		c.req.header("x-payment-signature") ??
+		c.req.header("X-Payment-Signature");
+	if (!paymentSignature) {
+		return undefined;
+	}
 
 	let paymentPayload: ReturnType<typeof decodePaymentSignatureHeader>;
 	try {
 		paymentPayload = decodePaymentSignatureHeader(paymentSignature);
 	} catch {
+		console.warn("[x402] allowlist path: payment signature decode failed");
 		return undefined;
 	}
 
@@ -228,6 +392,7 @@ async function verifyX402AndGetPayer(c: Parameters<typeof x402Gate>[0]) {
 				price: X402_BROWSE_PRICE,
 				network: X402_BROWSE_NETWORK,
 				payTo: PAY_TO_ADDRESS,
+				maxTimeoutSeconds: X402_BROWSE_MAX_TIMEOUT_SECONDS,
 			},
 		],
 		((): HTTPRequestContext => {
@@ -260,7 +425,6 @@ async function verifyX402AndGetPayer(c: Parameters<typeof x402Gate>[0]) {
 			paymentPayload,
 			matching,
 		);
-
 		if (!verification.isValid) {
 			return undefined;
 		}
@@ -268,17 +432,49 @@ async function verifyX402AndGetPayer(c: Parameters<typeof x402Gate>[0]) {
 			? getAddress(verification.payer as `0x${string}`)
 			: undefined;
 		return payer;
-	} catch {
+	} catch (err) {
+		if (err instanceof VerifyError) {
+			console.error("x402 verifyPayment (facilitator) rejected:", {
+				invalidReason: err.invalidReason,
+				invalidMessage: err.invalidMessage,
+				payer: err.payer,
+				statusCode: err.statusCode,
+			});
+		} else {
+			console.error("x402 verifyPayment threw:", err);
+		}
 		return undefined;
 	}
 }
 
 app.get("/browse/*", async (c) => {
 	if (isFileRequest(c.req.path)) {
-		if (c.req.query("pay") === "1") {
-			const payer = await verifyX402AndGetPayer(c);
-			if (payer && x402Allowlist.has(payer)) {
-				return serveBrowseFile(c.req.path);
+		const wantsPay = c.req.query("pay") === "1";
+		const paymentHeader =
+			c.req.header("payment-signature") ??
+			c.req.header("PAYMENT-SIGNATURE") ??
+			c.req.header("Payment-Signature") ??
+			c.req.header("x-payment") ??
+			c.req.header("X-Payment") ??
+			c.req.header("x-payment-signature") ??
+			c.req.header("X-Payment-Signature");
+
+		// Important: the x402 paywall UI may "pay" via a fetch() retry that includes
+		// an x402 header (commonly `x-payment`) but may NOT preserve your `?pay=1`
+		// query param. So we treat "has x402 header" as an intent to pay too.
+		if (wantsPay || paymentHeader) {
+			if (paymentHeader && !X402_API_KEY) {
+				console.error(
+					"[nano-farchiver] PAYMENT-SIGNATURE present but X402_API_KEY is unset — facilitator POST /verify will return 401. Export it in the shell or add it to .env in the cwd where you start Bun.",
+				);
+			}
+			// Allowlist-only fast path: avoid calling the facilitator twice (here + x402Gate).
+			let payer: string | undefined;
+			if (x402Allowlist.size > 0 && paymentHeader) {
+				payer = await verifyX402AndGetPayer(c);
+				if (payer && x402Allowlist.has(payer as `0x${string}`)) {
+					return serveBrowseFile(c.req.path);
+				}
 			}
 			let result: Response | undefined;
 			const gateResult = await x402Gate(c, async () => {
@@ -345,4 +541,7 @@ Markdown files are rendered as formatted HTML.
 		),
 );
 
-export default app;
+const fetchWithPublicUrl: typeof app.fetch = (req, env, executionCtx) =>
+	app.fetch(rewriteRequestUrlForPublicClient(req), env, executionCtx);
+
+export default { fetch: fetchWithPublicUrl };

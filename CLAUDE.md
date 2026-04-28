@@ -101,3 +101,7 @@ From README:
 **To change caching behavior:**
 - Within-run dedup: `db/cache.db3` in `src/lib/neynar.ts`
 - Incremental pagination: `hasCastInDb()` check in `paginateFeedResponse()` uses `db/queue.db3` from `src/jobs/read.ts`
+
+### Web server / x402 (`server.ts`)
+
+- **`bun server.ts`**: HTTP API plus optional x402-gated `GET /browse/*` (see README table).
