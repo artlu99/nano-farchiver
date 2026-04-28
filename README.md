@@ -71,6 +71,8 @@ Starts a web server (default port 3000, configurable via `PORT` env var) with th
 | `GET /browse/**` | Browse the `out/` directory — lists folders, renders `.md` files as HTML |
 | `GET /llms.txt` | Machine-readable endpoint descriptions |
 
+Related env vars for the server: `X402_FACILITATOR_URL`, `X402_API_KEY`, `X402_ALLOWLIST`, `PUBLIC_APP_URL` (see `server.ts`).
+
 ## Troubleshooting
 
 **Rate limit errors:**
