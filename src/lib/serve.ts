@@ -134,6 +134,8 @@ function serveFile(filePath: string, relativePath: string): Response {
 
 	let html = breadcrumb(relativePath, filePath);
 
+	html += marked(body);
+
 	if (Object.keys(frontmatter).length > 0) {
 		html += `<dl>`;
 		for (const [key, value] of Object.entries(frontmatter)) {
@@ -141,8 +143,6 @@ function serveFile(filePath: string, relativePath: string): Response {
 		}
 		html += `</dl>`;
 	}
-
-	html += marked(body);
 
 	return new Response(renderPage(title, html), {
 		headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -198,7 +198,7 @@ export function serveBrowseFile(pathname: string): Response {
 	return new Response("not found", { status: 404 });
 }
 
-export function servePreview(pathname: string, previewLength = 20): Response {
+export function servePreview(pathname: string, previewLength = 60): Response {
 	const relativePath = decodeURIComponent(
 		pathname.slice("/browse/".length),
 	).replace(/\/+$/, "");
@@ -222,6 +222,11 @@ export function servePreview(pathname: string, previewLength = 20): Response {
 
 	let html = breadcrumb(relativePath, resolved);
 
+	html += `<div class="preview">`;
+	html += `<p class="preview-text">${escapeHtml(truncated)}${castText.length > previewLength ? "..." : ""}</p>`;
+	html += `<a class="pay-link" href="${pathname}?pay=1">Read full cast via x402</a>`;
+	html += `</div>`;
+
 	if (Object.keys(frontmatter).length > 0) {
 		html += `<dl>`;
 		for (const [key, value] of Object.entries(frontmatter)) {
@@ -229,11 +234,6 @@ export function servePreview(pathname: string, previewLength = 20): Response {
 		}
 		html += `</dl>`;
 	}
-
-	html += `<div class="preview">`;
-	html += `<p class="preview-text">${escapeHtml(truncated)}${castText.length > previewLength ? "..." : ""}</p>`;
-	html += `<a class="pay-link" href="${pathname}?pay=1">Read full cast via x402</a>`;
-	html += `</div>`;
 
 	return new Response(renderPage(title, html), {
 		headers: { "Content-Type": "text/html; charset=utf-8" },
