@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
@@ -38,7 +39,10 @@ function rewriteRequestUrlForPublicClient(request: Request): Request {
 	try {
 		const incoming = new URL(request.url);
 		if (publicBase) {
-			const fixed = new URL(incoming.pathname + incoming.search, `${publicBase}/`);
+			const fixed = new URL(
+				incoming.pathname + incoming.search,
+				`${publicBase}/`,
+			);
 			return new Request(fixed.href, request);
 		}
 		const forwardedProto = request.headers
@@ -68,7 +72,7 @@ const LOCK_PATH = "db/doIt.lock";
 const LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const JOB_TIMEOUT_MS = LOCK_TTL_MS - 5000; // slightly less than TTL
 const DEFAULT_FID = 3319217;
-const DEFAULT_TITLE = "decent-artlu";
+const DEFAULT_USERNAME = "decent-artlu";
 const X402_FACILITATOR_URL = "https://facilitator.artlu.xyz" as const;
 /** Must match the facilitator’s configured bearer token or `/verify` and `/settle` return 401. */
 const X402_API_KEY = process.env.X402_API_KEY;
@@ -154,7 +158,10 @@ const x402Server = new x402ResourceServer(facilitatorClient)
 	.onAfterSettle(async (ctx) => {
 		const r = ctx.result;
 		const tc = ctx.transportContext as
-			| { responseBody?: Buffer | string; responseHeaders?: Record<string, string> }
+			| {
+					responseBody?: Buffer | string;
+					responseHeaders?: Record<string, string>;
+			  }
 			| undefined;
 		let responseBodyBytes: number | undefined;
 		if (tc?.responseBody !== undefined) {
@@ -169,8 +176,7 @@ const x402Server = new x402ResourceServer(facilitatorClient)
 			fullResult: jsonForLog(r),
 			paymentPayload: jsonForLog(ctx.paymentPayload),
 			requirements: jsonForLog(ctx.requirements),
-			transportContextKeys:
-				tc && typeof tc === "object" ? Object.keys(tc) : [],
+			transportContextKeys: tc && typeof tc === "object" ? Object.keys(tc) : [],
 			responseBodyBytes,
 		});
 	})
@@ -201,7 +207,7 @@ const x402Server = new x402ResourceServer(facilitatorClient)
 	});
 
 const x402Routes = {
-	"GET /browse/*": {
+	[`GET /browse/${DEFAULT_USERNAME}/*`]: {
 		accepts: {
 			scheme: "exact",
 			price: X402_BROWSE_PRICE,
@@ -244,34 +250,40 @@ async function releaseLock(): Promise<void> {
 
 const app = new Hono();
 
+function sha1Hex(input: string): string {
+	return createHash("sha1").update(input).digest("hex");
+}
+
+const STATIC_DIR = resolve("static");
+
 app.get(
 	"/",
 	() =>
-		new Response(
-			`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>nano-farchiver</title>
-<style>
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;line-height:1.6;color:#1a1a1a}
-a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}
-</style>
-</head>
-<body>
-<h1>nano-farchiver</h1>
-<p>Farcaster cast archive. Browse or check status below.</p>
-<ul>
-<li><a href="/browse">Browse archive</a></li>
-<li><a href="/status">Job status</a></li>
-<li><a href="/llms.txt">llms.txt</a></li>
-</ul>
-</body>
-</html>`,
-			{ headers: { "Content-Type": "text/html; charset=utf-8" } },
-		),
+		new Response(Bun.file(resolve(STATIC_DIR, "index.html")), {
+			headers: {
+				"Content-Type": "text/html; charset=utf-8",
+				"Cache-Control": "public, max-age=300",
+			},
+		}),
 );
+
+app.get("/static/*", (c) => {
+	const relativePath = decodeURIComponent(
+		c.req.path.slice("/static/".length),
+	).replace(/^\/+/, "");
+	const resolved = resolve(join(STATIC_DIR, relativePath));
+	if (!resolved.startsWith(STATIC_DIR + sep) && resolved !== STATIC_DIR) {
+		return c.notFound();
+	}
+	try {
+		if (!statSync(resolved).isFile()) return c.notFound();
+	} catch {
+		return c.notFound();
+	}
+	return new Response(Bun.file(resolved), {
+		headers: { "Cache-Control": "public, max-age=300" },
+	});
+});
 
 app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -307,7 +319,25 @@ app.get("/status", async (c) => {
 				}
 			}
 		} catch {}
-		return c.json({ outstanding: total - completed, completed });
+		const payload = { outstanding: total - completed, completed };
+		const body = JSON.stringify(payload);
+		const etag = `W/"${sha1Hex(body)}"`;
+		if (c.req.header("if-none-match") === etag) {
+			return new Response(null, {
+				status: 304,
+				headers: {
+					ETag: etag,
+					"Cache-Control": "private, max-age=0, must-revalidate",
+				},
+			});
+		}
+		return new Response(body, {
+			headers: {
+				"Content-Type": "application/json; charset=utf-8",
+				ETag: etag,
+				"Cache-Control": "private, max-age=0, must-revalidate",
+			},
+		});
 	}
 
 	const numFid = Number(fid);
@@ -331,11 +361,29 @@ app.get("/status", async (c) => {
 		}
 	}
 
-	return c.json({
+	const payload = {
 		fid: numFid,
 		username: row?.username,
 		outstanding: total - completed,
 		completed,
+	};
+	const body = JSON.stringify(payload);
+	const etag = `W/"${sha1Hex(body)}"`;
+	if (c.req.header("if-none-match") === etag) {
+		return new Response(null, {
+			status: 304,
+			headers: {
+				ETag: etag,
+				"Cache-Control": "private, max-age=0, must-revalidate",
+			},
+		});
+	}
+	return new Response(body, {
+		headers: {
+			"Content-Type": "application/json; charset=utf-8",
+			ETag: etag,
+			"Cache-Control": "private, max-age=0, must-revalidate",
+		},
 	});
 });
 
@@ -449,6 +497,18 @@ async function verifyX402AndGetPayer(c: Parameters<typeof x402Gate>[0]) {
 
 app.get("/browse/*", async (c) => {
 	if (isFileRequest(c.req.path)) {
+		const relativePath = decodeURIComponent(
+			c.req.path.slice("/browse/".length),
+		).replace(/\/+$/, "");
+		const isDefaultUserFile =
+			relativePath === DEFAULT_USERNAME ||
+			relativePath.startsWith(`${DEFAULT_USERNAME}/`);
+
+		// Free for everyone else: serve full content, no preview.
+		if (!isDefaultUserFile) {
+			return serveBrowseFile(c.req.path);
+		}
+
 		const wantsPay = c.req.query("pay") === "1";
 		const paymentHeader =
 			c.req.header("payment-signature") ??
@@ -487,7 +547,7 @@ app.get("/browse/*", async (c) => {
 	}
 	return serveBrowse(c.req.path);
 });
-app.get("/browse", (c) => serveBrowse(c.req.path, DEFAULT_TITLE));
+app.get("/browse", (c) => serveBrowse(c.req.path, DEFAULT_USERNAME));
 
 const OUT_DIR = resolve("out");
 
@@ -507,38 +567,12 @@ function isFileRequest(pathname: string): boolean {
 app.get(
 	"/llms.txt",
 	() =>
-		new Response(
-			`# nano-farchiver
-
-## /health
-Returns { "status": "ok" }.
-
-## /uptime
-Returns { "uptime_seconds": <int> } seconds since server started.
-
-## /status?fid=<number>
-Returns { "fid", "username", "outstanding", "completed" } for a single user.
-
-## /status
-Returns aggregate { "outstanding", "completed" } across all users.
-
-## /doIt (POST)
-Triggers the archiver job. Returns 202 if started, 429 if already running. Poll /status for progress.
-
-## /clear (POST)
-Clears the network cache so the next /doIt fetches fresh data from the API. Use before /doIt for incremental updates.
-
-## /browse
-Browse the archived output directory. Lists users.
-
-## /browse/**
-Browse archived casts. Directory listings are free.
-Cast files show a free preview with metadata and first 5 characters of text.
-Add ?pay=1 to trigger x402 payment ($0.001 on Base) for the full file.
-Markdown files are rendered as formatted HTML.
-`,
-			{ headers: { "Content-Type": "text/plain" } },
-		),
+		new Response(Bun.file(resolve(STATIC_DIR, "llms.txt")), {
+			headers: {
+				"Content-Type": "text/plain; charset=utf-8",
+				"Cache-Control": "public, max-age=300",
+			},
+		}),
 );
 
 const fetchWithPublicUrl: typeof app.fetch = (req, env, executionCtx) =>
