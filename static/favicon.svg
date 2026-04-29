@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="nano-farchiver">
+  <defs>
+    <pattern id="grid" width="12" height="12" patternUnits="userSpaceOnUse">
+      <path d="M12 0H0V12" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+    </pattern>
+    <clipPath id="badgeClip">
+      <!-- 12-scallop gear-like badge: 24 points alternating outer/inner radii -->
+      <path d="M 64.00 12.00 L 74.35 25.36 L 90.00 18.97 L 92.28 35.72 L 109.03 38.00 L 102.64 53.65 L 116.00 64.00 L 102.64 74.35 L 109.03 90.00 L 92.28 92.28 L 90.00 109.03 L 74.35 102.64 L 64.00 116.00 L 53.65 102.64 L 38.00 109.03 L 35.72 92.28 L 18.97 90.00 L 25.36 74.35 L 12.00 64.00 L 25.36 53.65 L 18.97 38.00 L 35.72 35.72 L 38.00 18.97 L 53.65 25.36 Z"/>
+    </clipPath>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.25" result="b"/>
+      <feColorMatrix in="b" type="matrix"
+        values="
+          0 0 0 0 0.10
+          0 0 0 0 0.80
+          0 0 0 0 1.00
+          0 0 0 0.9 0" result="c"/>
+      <feMerge>
+        <feMergeNode in="c"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Badge -->
+  <g clip-path="url(#badgeClip)">
+    <rect x="0" y="0" width="128" height="128" fill="#000"/>
+    <rect x="0" y="0" width="128" height="128" fill="url(#grid)"/>
+  </g>
+
+  <text
+    x="64"
+    y="64"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+    font-weight="800"
+    font-size="56"
+    fill="#fff"
+    letter-spacing="-2"
+    filter="url(#glow)"
+  >nF</text>
+</svg>
