@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
-import { normalizeHash, pluralize } from "../lib/helpers";
+import { hash2filename, normalizeHash, pluralize } from "../lib/helpers";
 import {
 	renderEmbeds,
 	renderReplyFooter,
@@ -87,20 +87,13 @@ export const castsLoop = async () => {
 			continue;
 		}
 		const hydratedCast = JSON.parse(cast.data) as Cast;
-		const unixTimestamp = new Date(hydratedCast.timestamp);
-		// timestamp should by yyyymmdd-hhmmss in local time
-		const dtString = unixTimestamp.toISOString().slice(0, 10).replace(/-/g, "");
-		const tmString = unixTimestamp
-			.toISOString()
-			.slice(11, 19)
-			.replace(/[-:]/g, "");
 		// create /out/user.username subdirectory if it doesn't exist yet
 		const userSubdir = `${OUT_DIR}/${user.username}`;
 		if (!fs.existsSync(userSubdir)) {
 			fs.mkdirSync(userSubdir, { recursive: true });
 		}
 
-		const castPath = `${userSubdir}/${dtString}-${tmString}-${hash.slice(2, 10)}.md`;
+		const castPath = `${userSubdir}/${hash2filename(hash, hydratedCast.timestamp)}`;
 		if (fs.existsSync(castPath)) {
 			const existing = fs.readFileSync(castPath, "utf8");
 			// Only rewrite files that previously had an unresolved parent pointer.
