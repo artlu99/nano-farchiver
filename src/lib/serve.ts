@@ -70,7 +70,10 @@ ${bodyHtml}
 
 function breadcrumb(relativePath: string, filename?: string): string {
 	const parts = relativePath ? relativePath.split("/").filter(Boolean) : [];
-	let html = `<div class="breadcrumb"><a href="/browse">out</a>`;
+	let html =
+		parts.length === 0 && !filename
+			? `<div class="breadcrumb"><a href="/">home</a>`
+			: `<div class="breadcrumb"><a href="/browse">out</a>`;
 	for (let i = 0; i < parts.length; i++) {
 		const href = posix.join("/browse", ...parts.slice(0, i + 1));
 		html += ` / <a href="${href}">${parts[i]}</a>`;
@@ -198,7 +201,7 @@ export function serveBrowseFile(pathname: string): Response {
 	return new Response("not found", { status: 404 });
 }
 
-export function servePreview(pathname: string, previewLength = 60): Response {
+export function servePreview(pathname: string, previewLength: number): Response {
 	const relativePath = decodeURIComponent(
 		pathname.slice("/browse/".length),
 	).replace(/\/+$/, "");

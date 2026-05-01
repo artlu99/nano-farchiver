@@ -23,6 +23,7 @@ import { Hono } from "hono";
 import { getAddress } from "viem";
 import { doIt } from "./src/index";
 import { serveBrowse, serveBrowseFile, servePreview } from "./src/lib/serve";
+import { serveTimeline } from "./src/lib/timeline";
 import { withTimeout } from "./src/lib/timeouts";
 
 /**
@@ -73,6 +74,8 @@ const LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const JOB_TIMEOUT_MS = LOCK_TTL_MS - 5000; // slightly less than TTL
 const DEFAULT_FID = 3319217;
 const DEFAULT_USERNAME = "decent-artlu";
+const PREVIEW_LENGTH = 60;
+const TIMELINE_LIMIT = 20;
 const X402_FACILITATOR_URL = "https://facilitator.artlu.xyz" as const;
 /** Must match the facilitator’s configured bearer token or `/verify` and `/settle` return 401. */
 const X402_API_KEY = process.env.X402_API_KEY;
@@ -286,6 +289,8 @@ app.get("/static/*", (c) => {
 });
 
 app.get("/health", (c) => c.json({ status: "ok" }));
+
+app.get("/timeline", () => serveTimeline(TIMELINE_LIMIT, PREVIEW_LENGTH));
 
 app.get("/uptime", (c) =>
 	c.json({ uptime_seconds: Math.floor((Date.now() - startedAt) / 1000) }),
@@ -543,7 +548,7 @@ app.get("/browse/*", async (c) => {
 			if (gateResult instanceof Response) return gateResult;
 			return result ?? c.notFound();
 		}
-		return servePreview(c.req.path);
+		return servePreview(c.req.path, PREVIEW_LENGTH);
 	}
 	return serveBrowse(c.req.path);
 });
