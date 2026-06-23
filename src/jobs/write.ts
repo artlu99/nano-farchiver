@@ -15,15 +15,101 @@ import {
 	hydrateReferencedParents,
 	isCastDeleted,
 } from "./read";
+import { getUserFromShim } from "../lib/shim";
 
 const OUT_DIR = "out";
 const USERS_DIR = `${OUT_DIR}/_users_`;
 
+const PLACEHOLDER_USERNAME = /^fid:\d+$/;
+
+const isPlaceholderUsername = (username: string | null | undefined): boolean =>
+	!username?.trim() || PLACEHOLDER_USERNAME.test(username.trim());
+
+const resolveMentionUsername = async (
+	profile: Cast["mentioned_profiles"][number],
+): Promise<string> => {
+	const hint = profile.username?.trim();
+	if (hint && !isPlaceholderUsername(hint)) return hint;
+
+	try {
+		const user = await getUserFromFid(profile.fid);
+		if (user.username && !isPlaceholderUsername(user.username)) {
+			return user.username;
+		}
+	} catch {
+		// fall through to shim
+	}
+
+	try {
+		const user = await getUserFromShim(profile.fid);
+		if (user.username && !isPlaceholderUsername(user.username)) {
+			return user.username;
+		}
+	} catch {
+		// fall through to placeholder
+	}
+
+	return hint || `fid:${profile.fid}`;
+};
+
+const mentionLink = (username: string): string =>
+	`[@${username}](../_users_/${username}.md)`;
+
+const applyProfileMentions = async (
+	text: string,
+	profiles: Cast["mentioned_profiles"],
+	ranges: Cast["mentioned_profiles_ranges"],
+): Promise<string> => {
+	if (!profiles?.length || !ranges?.length) return text;
+
+	const mentions = profiles
+		.map((profile, index) => ({ profile, range: ranges[index] }))
+		.filter(
+			(
+				mention,
+			): mention is {
+				profile: (typeof profiles)[number];
+				range: NonNullable<(typeof ranges)[number]>;
+			} => mention.range !== undefined,
+		)
+		.sort((a, b) => b.range.start - a.range.start);
+
+	const usernameByFid = new Map<number, string>();
+	await Promise.all(
+		[...new Set(mentions.map(({ profile }) => profile.fid))].map(
+			async (fid) => {
+				const profile = mentions.find(({ profile }) => profile.fid === fid)
+					?.profile;
+				if (!profile) return;
+				usernameByFid.set(fid, await resolveMentionUsername(profile));
+			},
+		),
+	);
+
+	let result = text;
+	for (const { profile, range } of mentions) {
+		const username = usernameByFid.get(profile.fid) ?? `fid:${profile.fid}`;
+		result =
+			result.slice(0, range.start) +
+			mentionLink(username) +
+			result.slice(range.end);
+	}
+	return result;
+};
+
 const db = new Database("db/queue.db3", { strict: true });
 
-export const renderCast = (cast: Cast) => {
+export const renderCast = async (cast: Cast) => {
 	// TODO: quote casts
 	// TODO: embeds
+
+	// mentions: ranges[i] marks where mentioned_profiles[i] appears in text
+	const textWithMentions = await applyProfileMentions(
+		cast.text,
+		cast.mentioned_profiles,
+		cast.mentioned_profiles_ranges,
+	);
+
 	return {
 		hash: normalizeHash(cast.hash),
 		timestamp: cast.timestamp,
@@ -33,7 +119,7 @@ export const renderCast = (cast: Cast) => {
 
 		username: cast.author?.username,
 
-		text: cast.text,
+		text: textWithMentions,
 
 		channel: cast.channel?.name,
 		channel_id: cast.channel?.id,
@@ -98,20 +184,20 @@ export const castsLoop = async () => {
 			const existing = fs.readFileSync(castPath, "utf8");
 			// Only rewrite files that previously had an unresolved parent pointer.
 			if (!existing.includes("<deleted>")) continue;
-			const renderedCast = renderCast(hydratedCast);
+			const renderedCast = await renderCast(hydratedCast);
 			if (renderedCast.parent_hash && isCastDeleted(renderedCast.parent_hash)) {
 				continue;
 			}
 		}
 		console.log("writing cast to", castPath);
-		const renderedCast = renderCast(hydratedCast);
+		const renderedCast = await renderCast(hydratedCast);
 		const replyCount = countReplies(fid, hash);
 
 		// write
 		fs.writeFileSync(
 			castPath,
 			`
-${renderedCast.parent_hash ? await renderReplyHeader(hydratedCast) : renderTopLevelHeader(hydratedCast)}
+${renderedCast.parent_hash ? await renderReplyHeader(hydratedCast) : await renderTopLevelHeader(hydratedCast)}
 --
 ${renderedCast.text}
 ${renderEmbeds(hydratedCast.embeds ?? [])}

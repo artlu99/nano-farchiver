@@ -25,8 +25,8 @@ ${user.avatar ? `<img src="${user.avatar}" height="100" width="100" alt="${user.
     `.trim();
 };
 
-export const renderTopLevelHeader = (cast: Cast): string => {
-	const renderedCast = renderCast(cast);
+export const renderTopLevelHeader = async (cast: Cast): Promise<string> => {
+	const renderedCast = await renderCast(cast);
 	return `
 ---
 hash: ${renderedCast.hash.replace(/^0x/, "")}
@@ -38,7 +38,7 @@ fid: ${renderedCast.fid}
 };
 
 export const renderReplyHeader = async (cast: Cast): Promise<string> => {
-	const renderedCast = renderCast(cast);
+	const renderedCast = await renderCast(cast);
 	let parentCast =
 		renderedCast.parent_fid && renderedCast.parent_hash
 			? getCastFromHash(renderedCast.parent_hash, renderedCast.parent_fid)

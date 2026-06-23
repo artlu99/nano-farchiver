@@ -12,8 +12,13 @@ bun.lock
 # caches
 *.tsbuildinfo
 db/*.db3
+react/tailwind.css
+TODO.md
+AGENTS.md
 
 # output
 out/
 samples/
+nohup.out
 *.tar.gz
+

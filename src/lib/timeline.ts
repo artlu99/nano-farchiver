@@ -1,8 +1,10 @@
 import { Database } from "bun:sqlite";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { posix } from "node:path";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { escapeHtml, hash2filename, normalizeHash, utcDayKey } from "./helpers";
+
+const TEXTFILTERS_PATH = "db/textfilters.jsonl";
 
 function renderPage(title: string, bodyHtml: string): string {
 	return `<!DOCTYPE html>
@@ -16,6 +18,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;m
 a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}
 .breadcrumb{margin-bottom:1.5rem;font-size:.9rem;color:#888}
 .breadcrumb a{color:#888}.breadcrumb a:hover{color:#2563eb}
+.timeline-controls{display:flex;align-items:center;gap:.75rem;margin:.75rem 0 1.25rem}
+.timeline-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:.9rem;color:#374151;user-select:none}
+.timeline-toggle input{width:1rem;height:1rem}
 h2.day{margin:2rem 0 .75rem;padding-top:1rem;border-top:1px solid #e5e7eb;font-size:1.15rem;color:#374151}
 h2.day:first-of-type{border-top:none;padding-top:0;margin-top:0}
 .cast-row{margin:.75rem 0;padding:.5rem 0;border-bottom:1px solid #f3f4f6}
@@ -57,10 +62,53 @@ function snippetFromCast(cast: Cast, maxLen: number): string {
 	return `${t.slice(0, maxLen)}…`;
 }
 
+function escapeRegExp(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function loadTextFilters(): string[] {
+	try {
+		if (!existsSync(TEXTFILTERS_PATH)) return [];
+		const raw = readFileSync(TEXTFILTERS_PATH, "utf8");
+		const out: string[] = [];
+		for (const line of raw.split(/\r?\n/)) {
+			const t = line.trim();
+			if (!t) continue;
+			let parsed: unknown;
+			try {
+				parsed = JSON.parse(t);
+			} catch {
+				continue;
+			}
+			if (typeof parsed === "string" && parsed.trim()) {
+				out.push(parsed.trim());
+			}
+		}
+		return out;
+	} catch {
+		return [];
+	}
+}
+
+function makeWholeWordRegex(words: string[]): RegExp | null {
+	const cleaned = words.map((w) => w.trim()).filter(Boolean);
+	if (cleaned.length === 0) return null;
+	const alt = cleaned.map(escapeRegExp).join("|");
+	// Whole-word match; case-insensitive. This intentionally treats "gm!" as a match.
+	return new RegExp(String.raw`\b(?:${alt})\b`, "i");
+}
+
 /** HTML global timeline (UTC days, newest first). */
+export function serveTimeline(timeline_limit: number, preview_length: number): Response;
 export function serveTimeline(
 	timeline_limit: number,
 	preview_length: number,
+	spamaway: boolean,
+): Response;
+export function serveTimeline(
+	timeline_limit: number,
+	preview_length: number,
+	spamaway: boolean = true,
 ): Response {
 	const timeline_prefetch = timeline_limit * 2;
 
@@ -88,9 +136,27 @@ LIMIT ${timeline_prefetch}`,
 			)
 			.all() as CastRow[];
 
-		const visible = rows
-			.filter((r) => !deleted.has(normalizeHash(r.hash)))
-			.slice(0, timeline_limit);
+		let visible = rows.filter((r) => !deleted.has(normalizeHash(r.hash)));
+
+		// spamaway: filter out casts containing spam whole-words from textfilters.
+		if (spamaway) {
+			const filters = loadTextFilters();
+			const rx = makeWholeWordRegex(filters);
+			if (rx) {
+				visible = visible.filter((r) => {
+					try {
+						const cast = JSON.parse(r.data) as Cast;
+						const text = (cast.text ?? "").toString();
+						return !rx.test(text);
+					} catch {
+						// If it doesn't parse, keep it (avoid accidentally hiding data).
+						return true;
+					}
+				});
+			}
+		}
+
+		visible = visible.slice(0, timeline_limit);
 
 		const parentHashes = new Set<string>();
 		for (const r of visible) {
@@ -156,7 +222,11 @@ WHERE c.hash IN (${placeholders})`,
 		const sortedDays = [...days.keys()].sort().reverse();
 
 		let body = `<div class="breadcrumb"><a href="/browse">out</a> / <span>timeline</span></div>`;
-		body += `<h1>Timeline</h1><p>Showing ${visible.length} latest casts</p>`;
+		body += `<h1>Timeline</h1>`;
+		body += `<div class="timeline-controls">`;
+		body += `<label class="timeline-toggle"><input type="checkbox" id="spamaway-toggle"> <span>spamaway</span></label>`;
+		body += `</div>`;
+		body += `<p>Showing ${visible.length} latest casts</p>`;
 
 		for (const day of sortedDays) {
 			const dayRows = days.get(day);
@@ -194,6 +264,70 @@ WHERE c.hash IN (${placeholders})`,
 				body += `</article>`;
 			}
 		}
+
+		body += `<script>
+(() => {
+  const KEY = "nano-farchiver:timeline:spamaway";
+  const el = document.getElementById("spamaway-toggle");
+  if (!el) return;
+
+  const input = el;
+  const url = new URL(location.href);
+  const param = url.searchParams.get("spamaway");
+  const hasParam = param !== null;
+
+  function parseSpamawayParam(raw) {
+    if (raw == null) return null;
+    const v = String(raw).trim();
+    if (v === "0") return false;
+    if (v === "1") return true;
+    return null;
+  }
+
+  // Omitted param defaults to enabled on the server; URL may omit ?spamaway=.
+  let enabled = true;
+  try {
+    const stored = localStorage.getItem(KEY);
+    if (stored === "0") enabled = false;
+    if (stored === "1") enabled = true;
+  } catch {}
+
+  const enabledFromParam = parseSpamawayParam(param);
+  if (enabledFromParam !== null) enabled = enabledFromParam;
+  input.checked = enabled;
+
+  // Stored "off" but no param: server would treat as on — align URL with storage.
+  if (!hasParam && enabled === false) {
+    url.searchParams.set("spamaway", "0");
+    location.replace(url.toString());
+    return;
+  }
+
+  // Keep storage in sync with the actual server-driven state.
+  try {
+    localStorage.setItem(KEY, enabled ? "1" : "0");
+  } catch {}
+
+  const DEBOUNCE_MS = 150;
+  let refreshTimer = 0;
+  function debouncedRefresh(nextUrl) {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      // Reload from backend (server-rendered timeline HTML).
+      location.href = nextUrl.toString();
+    }, DEBOUNCE_MS);
+  }
+
+  input.addEventListener("change", () => {
+    try {
+      localStorage.setItem(KEY, input.checked ? "1" : "0");
+    } catch {}
+    const next = new URL(location.href);
+    next.searchParams.set("spamaway", input.checked ? "1" : "0");
+    debouncedRefresh(next);
+  });
+})();
+</script>`;
 
 		return new Response(renderPage("Timeline", body), {
 			headers: {

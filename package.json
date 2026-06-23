@@ -7,7 +7,15 @@
 		"clean": "rm -rf db/ out/ out.tar.gz",
 		"clear": "rm db/cache.db3",
 		"doIt": "bun run src/index.ts",
-		"bundle": "tar -czvf out.tar.gz out"
+		"bundle": "tar -czvf out.tar.gz out",
+		"postinstall": "bun run tailwind:build",
+		"tailwind": "bunx @tailwindcss/cli -i ./react/tailwind.input.css -o ./react/tailwind.css --config ./react/tailwind.config.js",
+		"tailwind:build": "bun run tailwind -- --minify",
+		"tailwind:watch": "bun run tailwind -- --watch",
+		"predev": "bun run tailwind:build",
+		"dev": "bun --hot ./serve.ts",
+		"prestart": "bun run tailwind:build",
+		"start": "bun ./serve.ts"
 	},
 	"dependencies": {
 		"@farcaster/core": "^0.18.10",
@@ -20,11 +28,19 @@
 		"itty-fetcher": "^1.0.10",
 		"marked": "^18.0.2",
 		"radash": "^12.1.1",
+		"react": "^19.2.6",
+		"react-dom": "^19.2.6",
+		"thirdweb": "^5.119.4",
 		"tiny-invariant": "^1.3.3",
 		"viem": "^2.48.4"
 	},
 	"devDependencies": {
-		"@types/bun": "latest"
+		"@types/bun": "latest",
+		"@types/react": "^19.1.12",
+		"@types/react-dom": "^19.1.9",
+		"@tailwindcss/cli": "^4.1.12",
+		"daisyui": "^5.0.50",
+		"tailwindcss": "^4.1.12"
 	},
 	"peerDependencies": {
 		"typescript": "^5.9.3"

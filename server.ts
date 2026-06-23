@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { decodePaymentSignatureHeader } from "@x402/core/http";
@@ -76,7 +76,7 @@ const DEFAULT_FID = 3319217;
 const DEFAULT_USERNAME = "decent-artlu";
 const PREVIEW_LENGTH = 60;
 const TIMELINE_LIMIT = 20;
-const X402_FACILITATOR_URL = "https://facilitator.artlu.xyz" as const;
+const X402_FACILITATOR_URL = "https://cf-x402-facilitator.artlu.workers.dev" as const; // "https://facilitator.artlu.xyz" as const;
 /** Must match the facilitator’s configured bearer token or `/verify` and `/settle` return 401. */
 const X402_API_KEY = process.env.X402_API_KEY;
 if (!X402_API_KEY) {
@@ -288,9 +288,53 @@ app.get("/static/*", (c) => {
 	});
 });
 
+app.get("/api/cast/:hash", (c) => {
+	if (!existsSync("db/queue.db3")) {
+		return c.json({ error: "database not found" }, 503);
+	}
+	const db = new Database("db/queue.db3", { readonly: true });
+	const hash = c.req.param("hash");
+	const with0x = hash.startsWith("0x") ? hash : `0x${hash}`;
+	const without0x = with0x.replace(/^0x/, "");
+	const castRow =
+		(db.query("SELECT fid FROM casts WHERE hash = ?").get(with0x) as
+			| { fid: number }
+			| undefined) ??
+		(db.query("SELECT fid FROM casts WHERE hash = ?").get(without0x) as
+			| { fid: number }
+			| undefined);
+	if (!castRow) {
+		return c.json({ error: "cast not found" }, 404);
+	}
+	const userRow = db
+		.query("SELECT username FROM users WHERE fid = ?")
+		.get(castRow.fid) as { username: string } | undefined;
+	if (!userRow) {
+		return c.json({ error: "user not found" }, 404);
+	}
+	const suffix = without0x.slice(0, 8);
+	const dirPath = resolve(`out/${userRow.username}`);
+	try {
+		const files = readdirSync(dirPath).filter((f) =>
+			f.endsWith(`-${suffix}.md`),
+		);
+		if (files.length === 0) {
+			return c.json({ error: "markdown file not found on disk" }, 404);
+		}
+		const content = readFileSync(join(dirPath, files[0]!), "utf-8");
+		return c.json({ markdown: content, filename: files[0] });
+	} catch {
+		return c.json({ error: "user directory not found" }, 404);
+	}
+});
+
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-app.get("/timeline", () => serveTimeline(TIMELINE_LIMIT, PREVIEW_LENGTH));
+app.get("/timeline", (c) => {
+	const raw = c.req.query("spamaway");
+	const spamaway = raw ? raw === "1"  : true;
+	return serveTimeline(TIMELINE_LIMIT, PREVIEW_LENGTH, spamaway);
+});
 
 app.get("/uptime", (c) =>
 	c.json({ uptime_seconds: Math.floor((Date.now() - startedAt) / 1000) }),
@@ -413,8 +457,7 @@ app.post("/clear", async (c) => {
 const x402Gate = paymentMiddlewareFromHTTPServer(
 	x402HttpServer,
 	x402PaywallConfig,
-	x402PaywallProvider,
-	true, // sync facilitator support on first protected request
+	x402PaywallProvider
 );
 
 async function verifyX402AndGetPayer(c: Parameters<typeof x402Gate>[0]) {

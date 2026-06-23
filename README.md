@@ -55,10 +55,13 @@ bun doIt   # Full fetch for the new FID
 ### Web server
 
 ```bash
-bun server.ts
+bun start   # builds `react/tailwind.css`, then serves (default port 3000)
+bun dev     # same, with `--hot` reload on `serve.ts`
 ```
 
-Starts a web server (default port 3000, configurable via `PORT` env var) with the following endpoints:
+`react/tailwind.css` is generated (gitignored). `postinstall`, `start`, and `dev` run `tailwind:build` automatically; use `bun run tailwind:watch` in another terminal while editing styles.
+
+Starts a web server (configurable via `PORT`) with the following endpoints:
 
 | Endpoint | Description |
 |---|---|
@@ -85,9 +88,16 @@ Related env vars for the server: `X402_FACILITATOR_URL`, `X402_API_KEY`, `X402_A
 
 ## Development
 
-To run in development mode:
+Archiver (fetch casts to `out/`):
+
 ```bash
-bun run src/index.ts
+bun doIt
+```
+
+React UI + API (`/react/`, `/api/cast/:hash`):
+
+```bash
+bun dev
 ```
 
 This project was created using `bun init` in bun v1.3.3. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

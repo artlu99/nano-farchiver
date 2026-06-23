@@ -269,6 +269,6 @@ export const queueLoop = async (
 				tagCast(dr);
 			}
 		}
-		if (VERBOSE) console.log(renderCast(c));
+		if (VERBOSE) console.log(await renderCast(c));
 	}
 };
