@@ -295,15 +295,6 @@ export const renderEmbedsAsync = async (embeds: Embed[]): Promise<string> => {
 	return lines.filter((line) => line.trim().length > 0).join("\n\n");
 };
 
-/** @deprecated use renderEmbedsAsync — sync URL-only helper for tests */
-export const renderEmbeds = (embeds: Embed[]): string => {
-	if (!embeds.length) return "";
-	return embeds
-		.map((embed) => (isEmbedUrl(embed) ? renderUrlEmbed(embed) : ""))
-		.filter((line) => line.trim().length > 0)
-		.join("\n\n");
-};
-
 export const embedsMissingFromFile = (
 	existing: string,
 	embeds: Embed[],

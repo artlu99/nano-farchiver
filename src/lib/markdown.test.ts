@@ -1,24 +1,20 @@
 import type { Embed } from "@neynar/nodejs-sdk/build/api";
 import { describe, expect, test } from "bun:test";
-import {
-	embedsMissingFromFile,
-	renderEmbeds,
-	renderEmbedsAsync,
-} from "./markdown";
+import { embedsMissingFromFile, renderEmbedsAsync } from "./markdown";
 
-describe("renderEmbeds", () => {
-	test("url_only_embed", () => {
+describe("renderEmbedsAsync", () => {
+	test("url_only_embed", async () => {
 		const embeds: Embed[] = [
 			{ url: "https://sassyhash.artlu.xyz/blog/developer-journey/" },
 		];
-		const out = renderEmbeds(embeds);
+		const out = await renderEmbedsAsync(embeds);
 		expect(out).toBe(
 			"[sassyhash.artlu.xyz/blog/developer-journey/](https://sassyhash.artlu.xyz/blog/developer-journey/)",
 		);
 		expect(out).not.toContain("<img");
 	});
 
-	test("url_with_title_metadata", () => {
+	test("url_with_title_metadata", async () => {
 		const embeds: Embed[] = [
 			{
 				url: "https://example.com/article",
@@ -28,12 +24,12 @@ describe("renderEmbeds", () => {
 				},
 			},
 		];
-		const out = renderEmbeds(embeds);
+		const out = await renderEmbedsAsync(embeds);
 		expect(out).toContain("[Article Title](https://example.com/article)");
 		expect(out).toContain("_Desc_");
 	});
 
-	test("url_with_image_metadata", () => {
+	test("url_with_image_metadata", async () => {
 		const embeds: Embed[] = [
 			{
 				url: "https://example.com",
@@ -47,13 +43,13 @@ describe("renderEmbeds", () => {
 				},
 			},
 		];
-		const out = renderEmbeds(embeds);
+		const out = await renderEmbedsAsync(embeds);
 		expect(out).toContain('height="200"');
 		expect(out).not.toContain("height={");
 		expect(out).toContain('src="https://example.com/og.png"');
 	});
 
-	test("image_only_url_extension", () => {
+	test("image_only_url_extension", async () => {
 		const embeds: Embed[] = [
 			{
 				url: "https://cdn.example.com/photo.jpg",
@@ -63,21 +59,21 @@ describe("renderEmbeds", () => {
 				},
 			},
 		];
-		const out = renderEmbeds(embeds);
+		const out = await renderEmbedsAsync(embeds);
 		expect(out).toBe("![embedded image](https://cdn.example.com/photo.jpg)");
 	});
 
-	test("multiple_embeds_separated", () => {
+	test("multiple_embeds_separated", async () => {
 		const embeds: Embed[] = [
 			{ url: "https://a.com" },
 			{ url: "https://b.com" },
 		];
-		const out = renderEmbeds(embeds);
+		const out = await renderEmbedsAsync(embeds);
 		expect(out).toBe("[a.com](https://a.com)\n\n[b.com](https://b.com)");
 	});
 
-	test("empty_embeds", () => {
-		expect(renderEmbeds([])).toBe("");
+	test("empty_embeds", async () => {
+		expect(await renderEmbedsAsync([])).toBe("");
 	});
 
 	test("unknown_embed", async () => {
