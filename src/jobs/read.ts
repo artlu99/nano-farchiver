@@ -179,6 +179,35 @@ WHERE parent_hash IS NOT NULL
 	return total;
 };
 
+export const hydrateQuotedCastEmbeds = async (
+	maxRounds: number = 5,
+): Promise<number> => {
+	let total = 0;
+	for (let i = 0; i < maxRounds; i++) {
+		const rows = db.query("SELECT data FROM casts").all() as { data: string }[];
+		const missing = new Set<string>();
+		for (const { data } of rows) {
+			const cast = JSON.parse(data) as Cast;
+			for (const embed of cast.embeds ?? []) {
+				if (
+					"cast_id" in embed &&
+					embed.cast_id &&
+					typeof embed.cast_id.hash === "string"
+				) {
+					const hash = normalizeHash(embed.cast_id.hash);
+					if (!hasCastInDb(hash)) missing.add(hash);
+				}
+			}
+		}
+		if (missing.size === 0) break;
+		total += missing.size;
+		await Promise.all(
+			cluster([...missing], 25).map((chunk) => getCasts(chunk)),
+		);
+	}
+	return total;
+};
+
 export const countReplies = (fid: number, hash: string): number => {
 	const res = db
 		.query(

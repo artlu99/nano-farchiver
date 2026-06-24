@@ -5,6 +5,13 @@
   --link: #2563eb;
   --muted: #555;
   --border: #ccc;
+  --code-bg: #f4f4f4;
+  --surface: #f9fafb;
+  --accent-bg: #f0f9ff;
+  --accent-border: #2563eb;
+  --btn-bg: #2563eb;
+  --btn-fg: #fff;
+  --btn-hover: #1d4ed8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -14,6 +21,13 @@
     --link: #7cb3ff;
     --muted: #9a9a9a;
     --border: #3a3a3a;
+    --code-bg: #222;
+    --surface: #1c1c1c;
+    --accent-bg: #1a2332;
+    --accent-border: #7cb3ff;
+    --btn-bg: #3b82f6;
+    --btn-fg: #fff;
+    --btn-hover: #2563eb;
   }
 }
 

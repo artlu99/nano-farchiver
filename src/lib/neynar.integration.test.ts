@@ -2,6 +2,7 @@ import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { expect, test } from "bun:test";
 import { fetcher } from "itty-fetcher";
 import { renderCast } from "../jobs/write";
+import { renderEmbedsAsync } from "./markdown";
 
 const api = fetcher({
 	base: "https://haatz.quilibrium.com/v2",
@@ -32,17 +33,32 @@ const cases = [
 		hash: "0xd86f491754536a930517c5f6c901cf4df0c91f68",
 		fid: 3337563,
 		expectedText: "[@adrienne](../_users_/adrienne.md)",
-	}
+	},
+	{
+		hash: "0x74d1fce60b05199c8eab57d649145d69b258708b",
+		fid: 3319217,
+		expectedEmbed:
+			"[sassyhash.artlu.xyz/blog/developer-journey/](https://sassyhash.artlu.xyz/blog/developer-journey/)",
+	},
 ] as const;
 
-for (const { hash, fid, expectedText } of cases) {
+for (const entry of cases) {
+	const { hash, fid } = entry;
 	test(`GET /farcaster/casts fetches ${hash} (fid ${fid})`, async () => {
 		const cast = await fetchCastByHash(hash);
 
 		expect(cast.author.fid).toBe(fid);
 		expect(cast.hash).toBe(hash.replace(/^0x/, ""));
 
-		const rendered = await renderCast(cast);
-		expect(rendered.text).toContain(expectedText);
+		if ("expectedText" in entry) {
+			const rendered = await renderCast(cast);
+			expect(rendered.text).toContain(entry.expectedText);
+		}
+
+		if ("expectedEmbed" in entry) {
+			expect(cast.embeds?.length).toBeGreaterThan(0);
+			const embedBlock = await renderEmbedsAsync(cast.embeds ?? []);
+			expect(embedBlock).toContain(entry.expectedEmbed);
+		}
 	});
 }

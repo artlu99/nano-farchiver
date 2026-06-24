@@ -13,21 +13,21 @@ function renderPage(title: string, bodyHtml: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)} — nano-farchiver</title>
+<link rel="stylesheet" href="/static/styles.css">
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;max-width:48rem;margin:2rem auto;padding:0 1rem;line-height:1.6;color:#1a1a1a}
-a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}
-.breadcrumb{margin-bottom:1.5rem;font-size:.9rem;color:#888}
-.breadcrumb a{color:#888}.breadcrumb a:hover{color:#2563eb}
+body{max-width:48rem;margin:2rem auto}
+.breadcrumb{margin-bottom:1.5rem;font-size:.9rem;color:var(--muted)}
+.breadcrumb a{color:var(--muted)}.breadcrumb a:hover{color:var(--link)}
 .timeline-controls{display:flex;align-items:center;gap:.75rem;margin:.75rem 0 1.25rem}
-.timeline-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:.9rem;color:#374151;user-select:none}
+.timeline-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:.9rem;color:var(--fg);user-select:none}
 .timeline-toggle input{width:1rem;height:1rem}
-h2.day{margin:2rem 0 .75rem;padding-top:1rem;border-top:1px solid #e5e7eb;font-size:1.15rem;color:#374151}
+h2.day{margin:2rem 0 .75rem;padding-top:1rem;border-top:1px solid var(--border);font-size:1.15rem;color:var(--fg)}
 h2.day:first-of-type{border-top:none;padding-top:0;margin-top:0}
-.cast-row{margin:.75rem 0;padding:.5rem 0;border-bottom:1px solid #f3f4f6}
-.cast-meta{font-size:.85rem;color:#6b7280;margin-bottom:.25rem}
-.cast-snippet{color:#1a1a1a;font-size:.95rem}
-.reply-hint{margin:.35rem 0 0;font-size:.85rem;color:#6b7280;padding-left:.75rem;border-left:2px solid #e5e7eb}
-.reply-hint a{color:#4b5563}
+.cast-row{margin:.75rem 0;padding:.5rem 0;border-bottom:1px solid var(--border)}
+.cast-meta{font-size:.85rem;color:var(--muted);margin-bottom:.25rem}
+.cast-snippet{color:var(--fg);font-size:.95rem}
+.reply-hint{margin:.35rem 0 0;font-size:.85rem;color:var(--muted);padding-left:.75rem;border-left:2px solid var(--border)}
+.reply-hint a{color:var(--muted)}
 </style>
 </head>
 <body>

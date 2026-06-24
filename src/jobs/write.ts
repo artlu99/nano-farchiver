@@ -3,7 +3,8 @@ import fs from "node:fs";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { hash2filename, normalizeHash, pluralize } from "../lib/helpers";
 import {
-	renderEmbeds,
+	embedsMissingFromFile,
+	renderEmbedsAsync,
 	renderReplyFooter,
 	renderReplyHeader,
 	renderTopLevelHeader,
@@ -12,6 +13,7 @@ import {
 import {
 	countReplies,
 	getUserFromFid,
+	hydrateQuotedCastEmbeds,
 	hydrateReferencedParents,
 	isCastDeleted,
 } from "./read";
@@ -100,9 +102,6 @@ const applyProfileMentions = async (
 const db = new Database("db/queue.db3", { strict: true });
 
 export const renderCast = async (cast: Cast) => {
-	// TODO: quote casts
-	// TODO: embeds
-
 	// mentions: ranges[i] marks where mentioned_profiles[i] appears in text
 	const textWithMentions = await applyProfileMentions(
 		cast.text,
@@ -180,10 +179,17 @@ export const castsLoop = async () => {
 		}
 
 		const castPath = `${userSubdir}/${hash2filename(hash, hydratedCast.timestamp)}`;
+		const embedBlock = await renderEmbedsAsync(hydratedCast.embeds ?? []);
 		if (fs.existsSync(castPath)) {
 			const existing = fs.readFileSync(castPath, "utf8");
-			// Only rewrite files that previously had an unresolved parent pointer.
-			if (!existing.includes("<deleted>")) continue;
+			const needsRewrite =
+				existing.includes("<deleted>") ||
+				embedsMissingFromFile(
+					existing,
+					hydratedCast.embeds ?? [],
+					embedBlock,
+				);
+			if (!needsRewrite) continue;
 			const renderedCast = await renderCast(hydratedCast);
 			if (renderedCast.parent_hash && isCastDeleted(renderedCast.parent_hash)) {
 				continue;
@@ -199,8 +205,7 @@ export const castsLoop = async () => {
 			`
 ${renderedCast.parent_hash ? await renderReplyHeader(hydratedCast) : await renderTopLevelHeader(hydratedCast)}
 --
-${renderedCast.text}
-${renderEmbeds(hydratedCast.embeds ?? [])}
+${renderedCast.text}${embedBlock ? `\n\n${embedBlock}` : ""}
 ${renderReplyFooter(replyCount)}
 --
 ${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />` : "{no channel}"}
@@ -214,6 +219,7 @@ export const writeLoop = async () => {
 	await fidsLoop();
 	// Ensure all referenced parent casts exist before writing files.
 	await hydrateReferencedParents(5);
+	await hydrateQuotedCastEmbeds(5);
 	await castsLoop();
 	// One more pass to write user files discovered during cast hydration/writes.
 	await fidsLoop();

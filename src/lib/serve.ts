@@ -43,23 +43,23 @@ function renderPage(title: string, bodyHtml: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title} — nano-farchiver</title>
+<link rel="stylesheet" href="/static/styles.css">
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;max-width:48rem;margin:2rem auto;padding:0 1rem;line-height:1.6;color:#1a1a1a}
-a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}
-pre{background:#f4f4f4;padding:1rem;border-radius:4px;overflow-x:auto}
-code{background:#f4f4f4;padding:.15rem .3rem;border-radius:3px;font-size:.9em}
+body{max-width:48rem;margin:2rem auto}
+pre{background:var(--code-bg);padding:1rem;border-radius:4px;overflow-x:auto}
+code{background:var(--code-bg);padding:.15rem .3rem;border-radius:3px;font-size:.9em}
 img{max-width:100%}
-dl{background:#f9fafb;padding:1rem;border-radius:4px;margin-bottom:1.5rem}
-dt{font-weight:600}dd{margin:0 0 .25rem 1rem;color:#555}
-.breadcrumb{margin-bottom:1.5rem;font-size:.9rem;color:#888}
-.breadcrumb a{color:#888}.breadcrumb a:hover{color:#2563eb}
+dl{background:var(--surface);padding:1rem;border-radius:4px;margin-bottom:1.5rem}
+dt{font-weight:600}dd{margin:0 0 .25rem 1rem;color:var(--muted)}
+.breadcrumb{margin-bottom:1.5rem;font-size:.9rem;color:var(--muted)}
+.breadcrumb a{color:var(--muted)}.breadcrumb a:hover{color:var(--link)}
 ul.entries{list-style:none;padding:0}
 ul.entries li{padding:.25rem 0}
 .dir{font-weight:600}
-.preview{background:#f0f9ff;border-left:3px solid #2563eb;padding:1rem;margin-bottom:1.5rem;border-radius:0 4px 4px 0}
+.preview{background:var(--accent-bg);border-left:3px solid var(--accent-border);padding:1rem;margin-bottom:1.5rem;border-radius:0 4px 4px 0}
 .preview-text{margin:0;font-size:1.1rem}
-.pay-link{display:inline-block;margin-top:1rem;padding:.5rem 1rem;background:#2563eb;color:#fff;text-decoration:none;border-radius:4px}
-.pay-link:hover{background:#1d4ed8;text-decoration:none}
+.pay-link{display:inline-block;margin-top:1rem;padding:.5rem 1rem;background:var(--btn-bg);color:var(--btn-fg);text-decoration:none;border-radius:4px}
+.pay-link:hover{background:var(--btn-hover);text-decoration:none}
 </style>
 </head>
 <body>
