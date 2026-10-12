@@ -1,5 +1,5 @@
-import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { expect, test } from "bun:test";
+import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { fetcher } from "itty-fetcher";
 import { renderCast } from "../jobs/write";
 import { renderEmbedsAsync } from "./markdown";
@@ -10,9 +10,9 @@ const api = fetcher({
 });
 
 const fetchCastByHash = async (hash: string): Promise<Cast> => {
-	const res = await api.get<
-		{ result: { casts: Cast[] } } | { casts: Cast[] }
-	>(`/farcaster/casts/?casts=${hash}`);
+	const res = await api.get<{ result: { casts: Cast[] } } | { casts: Cast[] }>(
+		`/farcaster/casts/?casts=${hash}`,
+	);
 
 	const casts =
 		(res && typeof res === "object" && "result" in res
@@ -20,6 +20,7 @@ const fetchCastByHash = async (hash: string): Promise<Cast> => {
 			: res.casts) ?? [];
 
 	expect(casts).toHaveLength(1);
+	// biome-ignore lint/style/noNonNullAssertion: length asserted above (repo convention)
 	return casts[0]!;
 };
 

@@ -12,6 +12,7 @@ bun.lock
 # caches
 *.tsbuildinfo
 db/*.db3
+db/*.db3-*
 react/tailwind.css
 TODO.md
 AGENTS.md

@@ -1,5 +1,27 @@
+import type { Cast } from "@neynar/nodejs-sdk/build/api";
+
 export function pluralize(count: number, word: string, plural = `${word}s`) {
 	return `${count} ${count === 1 ? word : plural}`;
+}
+
+export function quoteHashes(cast: Cast): string[] {
+	const hashes: string[] = [];
+	for (const embed of cast.embeds ?? []) {
+		if (
+			"cast_id" in embed &&
+			embed.cast_id &&
+			typeof embed.cast_id.hash === "string"
+		) {
+			hashes.push(normalizeHash(embed.cast_id.hash));
+		}
+	}
+	return hashes;
+}
+
+export function absentHashes(requested: string[], returned: Cast[]): string[] {
+	if (requested.length === 0) return [];
+	const returnedSet = new Set(returned.map((cast) => normalizeHash(cast.hash)));
+	return requested.filter((hash) => !returnedSet.has(normalizeHash(hash)));
 }
 
 export function escapeHtml(text: string): string {

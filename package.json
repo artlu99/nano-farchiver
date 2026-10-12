@@ -6,6 +6,7 @@
 	"scripts": {
 		"clean": "rm -rf db/ out/ out.tar.gz",
 		"clear": "rm db/cache.db3",
+		"test": "bun test src/lib/markdown.test.ts src/lib/concurrency.test.ts src/lib/helpers.test.ts src/lib/timers.test.ts src/lib/snapchain.test.ts src/jobs/read.test.ts src/jobs/write.test.ts src/jobs/queue.test.ts",
 		"doIt": "bun run src/index.ts",
 		"bundle": "tar -czvf out.tar.gz out",
 		"postinstall": "bun run tailwind:build",

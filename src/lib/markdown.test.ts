@@ -1,5 +1,5 @@
-import type { Embed } from "@neynar/nodejs-sdk/build/api";
 import { describe, expect, test } from "bun:test";
+import type { Embed } from "@neynar/nodejs-sdk/build/api";
 import { embedsMissingFromFile, renderEmbedsAsync } from "./markdown";
 
 describe("renderEmbedsAsync", () => {
@@ -96,11 +96,7 @@ describe("embedsMissingFromFile", () => {
 		const embeds: Embed[] = [{ url: "https://example.com/x" }];
 		const rendered = "[example.com/x](https://example.com/x)";
 		expect(
-			embedsMissingFromFile(
-				"text\n\nhttps://example.com/x",
-				embeds,
-				rendered,
-			),
+			embedsMissingFromFile("text\n\nhttps://example.com/x", embeds, rendered),
 		).toBe(true);
 	});
 

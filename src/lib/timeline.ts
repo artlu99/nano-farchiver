@@ -99,7 +99,10 @@ function makeWholeWordRegex(words: string[]): RegExp | null {
 }
 
 /** HTML global timeline (UTC days, newest first). */
-export function serveTimeline(timeline_limit: number, preview_length: number): Response;
+export function serveTimeline(
+	timeline_limit: number,
+	preview_length: number,
+): Response;
 export function serveTimeline(
 	timeline_limit: number,
 	preview_length: number,

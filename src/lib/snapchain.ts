@@ -1,6 +1,7 @@
 import type { Message } from "@farcaster/core";
 import { fetcher } from "itty-fetcher";
 import { retry, sift } from "radash";
+import { timeAsync } from "./timers";
 
 const PAGE_SIZE = 100;
 const MAX_SIZE = 1000;
@@ -109,21 +110,25 @@ const getChildren = async (
 export const traverse = async (
 	fid: number | undefined,
 	hash: string,
+	getChildrenFn: (
+		fid: number,
+		hash: string,
+	) => Promise<{ fid: number | undefined; hash: string }[]> = (f, h) =>
+		timeAsync("traverse", () => getChildren(f, h)),
 ): Promise<{ fid: number | undefined; hash: string }[]> => {
 	const seen = new Map<string, number>();
-	const queue = [{ fid, hash }];
-	while (queue.length > 0) {
-		const next = queue.shift();
-		if (!next) {
-			break;
-		}
-		const { fid, hash } = next;
-		if (seen.get(hash)) {
-			continue;
-		}
-		seen.set(hash, fid ?? 0);
-		const children = await getChildren(fid ?? 0, hash);
-		queue.push(...children);
+	let frontier: { fid: number | undefined; hash: string }[] = [{ fid, hash }];
+	while (frontier.length > 0) {
+		const levels = await Promise.all(
+			frontier.map(async (node) => {
+				if (seen.has(node.hash)) {
+					return [];
+				}
+				seen.set(node.hash, node.fid ?? 0);
+				return getChildrenFn(node.fid ?? 0, node.hash);
+			}),
+		);
+		frontier = levels.flat();
 	}
 	return [...seen.entries()].map(([hash, fid]) => ({ fid, hash }));
 };

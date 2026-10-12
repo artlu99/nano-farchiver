@@ -13,9 +13,11 @@ import {
 	getCastFromHash,
 	hasCastInDb,
 	markCastsDeleted,
-	tagCast,
+	tagCasts,
 } from "../jobs/read";
+import { absentHashes } from "./helpers";
 import { withTimeout } from "./timeouts";
+import { timeAsync } from "./timers";
 
 const MAX_SIZE = 10000;
 
@@ -252,10 +254,9 @@ export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
 	});
 
 	// Cache the complete paginated result
-	db().prepare("INSERT OR REPLACE INTO casts (fid, data) VALUES (?, ?)").run(
-		fid,
-		JSON.stringify(res),
-	);
+	db()
+		.prepare("INSERT OR REPLACE INTO casts (fid, data) VALUES (?, ?)")
+		.run(fid, JSON.stringify(res));
 
 	return res;
 };
@@ -279,10 +280,9 @@ export const getReplies = async (fid: number): Promise<FeedResponse> => {
 	);
 
 	// Cache the complete paginated result
-	db().prepare("INSERT OR REPLACE INTO replies (fid, data) VALUES (?, ?)").run(
-		fid,
-		JSON.stringify(res),
-	);
+	db()
+		.prepare("INSERT OR REPLACE INTO replies (fid, data) VALUES (?, ?)")
+		.run(fid, JSON.stringify(res));
 
 	return res;
 };
@@ -416,17 +416,19 @@ export const getConversation = async (hash: string): Promise<Conversation> => {
 
 	console.log("getting conversation for", hash);
 	// Fetch all pages
-	const res = await paginateConversation("/farcaster/cast/conversation/", {
-		reply_depth: 5,
-		include_chronological_parent_casts: true,
-		identifier: hash,
-		type: "hash",
-	});
+	const res = await timeAsync("conversation", () =>
+		paginateConversation("/farcaster/cast/conversation/", {
+			reply_depth: 5,
+			include_chronological_parent_casts: true,
+			identifier: hash,
+			type: "hash",
+		}),
+	);
 
 	// Cache the complete paginated result
-	db().prepare(
-		"INSERT OR REPLACE INTO conversations (hash, data) VALUES (?, ?)",
-	).run(hash, JSON.stringify(res));
+	db()
+		.prepare("INSERT OR REPLACE INTO conversations (hash, data) VALUES (?, ?)")
+		.run(hash, JSON.stringify(res));
 
 	return res;
 };
@@ -446,34 +448,44 @@ export const getCasts = async (hashes: string[]): Promise<Cast[]> => {
 		const fetchHashes = filterNonDeletedCastHashes(unseenHashes);
 		if (fetchHashes.length === 0) return cachedCasts;
 		try {
-			const res = await withTimeout(
-				api.get<
-					| { result: { casts: Cast[] } }
-					| { casts: Cast[] }
-					| Record<string, unknown>
-				>(`/farcaster/casts/?casts=${fetchHashes.join(",")}`),
-				{
-					timeoutMs: 5000, // 5 seconds
-					timeoutMessage: "Timed out waiting for response (5s)",
-					warnAfterMs: 3000, // 3 seconds
-					warn: () => {
-						for (const hash of fetchHashes) {
-							console.log(`still waiting for response for hash ${hash}`);
-						}
+			const res = await timeAsync("casts", () =>
+				withTimeout(
+					api.get<
+						| { result: { casts: Cast[] } }
+						| { casts: Cast[] }
+						| Record<string, unknown>
+					>(`/farcaster/casts/?casts=${fetchHashes.join(",")}`),
+					{
+						timeoutMs: 5000, // 5 seconds
+						timeoutMessage: "Timed out waiting for response (5s)",
+						warnAfterMs: 3000, // 3 seconds
+						warn: () => {
+							for (const hash of fetchHashes) {
+								console.log(`still waiting for response for hash ${hash}`);
+							}
+						},
+						onTimeout: () => {
+							// Timeout is not proof a cast is gone — leave it missing
+							// so later rounds (or runs) retry instead of deleting.
+							console.log(
+								`casts request timed out; ${fetchHashes.length} hash(es) left for retry`,
+							);
+						},
 					},
-					onTimeout: () => {
-						markCastsDeleted(fetchHashes, "timeout");
-					},
-				},
+				),
 			);
 			const fetchedCasts =
 				(res && typeof res === "object" && "result" in res
 					? (res as { result?: { casts?: Cast[] } }).result?.casts
 					: (res as { casts?: Cast[] }).casts) ?? [];
-			// update cache for unseen hashes
-			for (const cast of fetchedCasts) {
-				tagCast(cast);
+			// A successful response that omits a hash is upstream confirming
+			// the cast no longer exists — record it as deleted.
+			const absent = absentHashes(fetchHashes, fetchedCasts);
+			if (absent.length > 0) {
+				markCastsDeleted(absent, "not found upstream");
 			}
+			// update cache for unseen hashes
+			tagCasts(fetchedCasts);
 			return [...cachedCasts, ...fetchedCasts];
 		} catch (error: unknown) {
 			console.error(

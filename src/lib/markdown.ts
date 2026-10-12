@@ -115,7 +115,7 @@ export const renderReplyFooter = (numReplies: number): string => {
 	return `
 --
 ${pluralize(numReplies, "Reply", "Replies")}
-		`.trim();
+	`.trim();
 };
 
 type CastEmbedRef = { fid: number; hash: string; inlineCast?: Cast };
@@ -202,9 +202,7 @@ const renderOgCard = (embed: EmbedUrl): string => {
 		if (description) lines.push(`_${description}_`);
 	} else if (description) {
 		const label =
-			description.length > 80
-				? `${description.slice(0, 80)}…`
-				: description;
+			description.length > 80 ? `${description.slice(0, 80)}…` : description;
 		lines.push(`[${label}](${embed.url})`);
 	} else {
 		lines.push(renderUrlOnly(embed));
@@ -246,8 +244,7 @@ const renderQuoteEmbed = async (embed: Embed): Promise<string> => {
 	const ref = getCastEmbedRef(embed);
 	if (!ref) return renderUnknownEmbed(embed);
 
-	const quotedCast =
-		ref.inlineCast ?? getCastFromHash(ref.hash, ref.fid);
+	const quotedCast = ref.inlineCast ?? getCastFromHash(ref.hash, ref.fid);
 	const user = await getUserFromFid(ref.fid);
 	const username = user.username ?? `fid:${ref.fid}`;
 	const archivePath = await castArchiveRelativePath(ref.hash, ref.fid);

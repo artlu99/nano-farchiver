@@ -1,15 +1,15 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+	"root": false,
+	"$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
 	"css": {
 		"parser": {
 			"cssModules": true
 		}
 	},
 	"files": {
-		"include": ["./**/*"]
+		"includes": ["**/*"]
 	},
 	"linter": {
 		"enabled": false
 	}
 }
-

@@ -76,7 +76,8 @@ const DEFAULT_FID = 3319217;
 const DEFAULT_USERNAME = "decent-artlu";
 const PREVIEW_LENGTH = 60;
 const TIMELINE_LIMIT = 20;
-const X402_FACILITATOR_URL = "https://cf-x402-facilitator.artlu.workers.dev" as const; // "https://facilitator.artlu.xyz" as const;
+const X402_FACILITATOR_URL =
+	"https://cf-x402-facilitator.artlu.workers.dev" as const; // "https://facilitator.artlu.xyz" as const;
 /** Must match the facilitator’s configured bearer token or `/verify` and `/settle` return 401. */
 const X402_API_KEY = process.env.X402_API_KEY;
 if (!X402_API_KEY) {
@@ -321,6 +322,7 @@ app.get("/api/cast/:hash", (c) => {
 		if (files.length === 0) {
 			return c.json({ error: "markdown file not found on disk" }, 404);
 		}
+		// biome-ignore lint/style/noNonNullAssertion: files.length checked above (repo convention)
 		const content = readFileSync(join(dirPath, files[0]!), "utf-8");
 		return c.json({ markdown: content, filename: files[0] });
 	} catch {
@@ -332,7 +334,7 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 
 app.get("/timeline", (c) => {
 	const raw = c.req.query("spamaway");
-	const spamaway = raw ? raw === "1"  : true;
+	const spamaway = raw ? raw === "1" : true;
 	return serveTimeline(TIMELINE_LIMIT, PREVIEW_LENGTH, spamaway);
 });
 
@@ -457,7 +459,7 @@ app.post("/clear", async (c) => {
 const x402Gate = paymentMiddlewareFromHTTPServer(
 	x402HttpServer,
 	x402PaywallConfig,
-	x402PaywallProvider
+	x402PaywallProvider,
 );
 
 async function verifyX402AndGetPayer(c: Parameters<typeof x402Gate>[0]) {

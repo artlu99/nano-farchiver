@@ -201,7 +201,10 @@ export function serveBrowseFile(pathname: string): Response {
 	return new Response("not found", { status: 404 });
 }
 
-export function servePreview(pathname: string, previewLength: number): Response {
+export function servePreview(
+	pathname: string,
+	previewLength: number,
+): Response {
 	const relativePath = decodeURIComponent(
 		pathname.slice("/browse/".length),
 	).replace(/\/+$/, "");
