@@ -290,10 +290,18 @@ Progress (2026-11-03):
       POST /doIt proxied to ARCHIVER_URL, x402 paywall port (env-gated),
       wrangler.jsonc + public/ asset build, 10 route tests against an
       injected MemoryStore (117 total). Deploy: `bun run web:deploy`.
-- [ ] **Next:** deploy the web worker (`bun run web:deploy`) + verify x402
-      end-to-end on staging; decide cadence + flip the writer
-      (`ARCHIVE_BACKEND=store` cron on one deployment); lifecycle rule for
-      noncurrent versions on the bucket.
+- [x] **`web` worker DEPLOYED (stage 4 partially live).**
+      https://farchiver-web.artlu.workers.dev — browse/timeline/api served
+      from the bucket; x402 gate ACTIVE (facilitator via service binding —
+      workers.dev→workers.dev fetch is blocked, error 1042; routed through
+      the FACILITATOR binding instead). Live checks: timeline 200, stats
+      200, gated preview + pay-link 200, bogus payment → 402 (verify
+      round-trip works), ungated 200. Index tuple migration ran (2,631
+      legacy 5-tuples → 6-tuples). Postponed: a real wallet payment.
+- [ ] **Next:** lifecycle rule on the bucket (noncurrent-version expiry);
+      cadence + writer flip (`ARCHIVE_BACKEND=store` cron, VPS writer off);
+      web worker on a custom domain + worker logs reviewed; re-sign
+      commits, push.
 
 1. **Store + refactor (Bun-only, no behavior change).** `ArchiveStore` +
    `MemoryStore` + `S3Store`; `RunContext`; fid parameterization
