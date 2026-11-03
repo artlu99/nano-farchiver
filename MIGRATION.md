@@ -299,10 +299,14 @@ Progress (2026-11-03):
       200, gated preview + pay-link 200, bogus payment → 402 (verify
       round-trip works), ungated 200. Index tuple migration ran (2,631
       legacy 5-tuples → 6-tuples). Postponed: a real wallet payment.
-- [ ] **Next:** lifecycle rule on the bucket (noncurrent-version expiry);
-      cadence + writer flip (`ARCHIVE_BACKEND=store` cron, VPS writer off);
-      web worker on a custom domain + worker logs reviewed; re-sign
-      commits, push.
+- [x] **Cadence + writer flip (stage 3 COMPLETE, no downtime).** VPS web
+      process + tunnel killed; readers cutover to the web worker via the
+      custom domain (verified live). Archiver: hourly cron on the server
+      (`scripts/cron-store-archiver.sh`, `17 * * * *`) — flock-enforced
+      single-writer, dated logs (14-day prune), `ARCHIVE_BACKEND=store` →
+      R2. Old local-SQLite writer had no cron to retire (it was manual).
+- [ ] **Next:** live wallet payment for x402 (postponed); optional
+      second-bucket sync (`scripts/sync-buckets.ts`, needs a provider).
 
 1. **Store + refactor (Bun-only, no behavior change).** `ArchiveStore` +
    `MemoryStore` + `S3Store`; `RunContext`; fid parameterization
