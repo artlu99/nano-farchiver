@@ -14,7 +14,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import type { PaywallConfig } from "@x402/hono";
 import { paymentMiddlewareFromHTTPServer } from "@x402/hono";
 import { createPaywall, evmPaywall } from "@x402/paywall";
-import type { Context, Next } from "hono";
+import type { Context } from "hono";
 import { getAddress } from "viem";
 import type { Env } from "./env";
 

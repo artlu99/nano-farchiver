@@ -1,6 +1,6 @@
 import { marked } from "marked";
-import { escapeHtml, hash2filename } from "../src/lib/helpers";
-import type { RenderSink } from "../src/sink";
+import { escapeHtml } from "../src/lib/helpers";
+
 import type { ArchiveStore } from "../src/store/types";
 import {
 	breadcrumb,

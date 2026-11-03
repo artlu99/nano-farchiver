@@ -6,15 +6,16 @@
  * commits the index ONCE. Idempotent: 6-tuple entries are skipped.
  *   bun scripts/migrate-index-tuple.ts
  */
+
+import { mapWithConcurrency } from "../src/lib/concurrency";
 import { normalizeHash } from "../src/lib/helpers";
 import {
+	type CastIndexEntry,
 	castKey,
 	loadIndex,
 	previewOf,
 	saveIndex,
-	type CastIndexEntry,
 } from "../src/store/indexModel";
-import { mapWithConcurrency } from "../src/lib/concurrency";
 import { S3Store, s3ConfigFromEnv } from "../src/store/s3";
 import { bytesToText } from "../src/store/types";
 
@@ -27,7 +28,7 @@ if (!loaded) {
 const index = loaded.index;
 
 const hashes = Object.keys(index.casts);
-const stale = hashes.filter((hash) => index.casts[hash]!.length !== 6);
+const stale = hashes.filter((hash) => (index.casts[hash]?.length ?? 0) !== 6);
 console.log(
 	`index: ${hashes.length} casts, ${stale.length} with legacy 5-tuple shape`,
 );
@@ -38,7 +39,7 @@ if (stale.length === 0) {
 
 let migrated = 0;
 await mapWithConcurrency(stale, 10, async (hash) => {
-	const old = index.casts[hash]!;
+	const old = index.casts[hash] ?? [];
 	const [fid, ts, parentHash, replyCount, preview] = old as unknown as [
 		number,
 		number,

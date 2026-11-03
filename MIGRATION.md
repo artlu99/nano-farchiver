@@ -305,6 +305,15 @@ Progress (2026-11-03):
       (`scripts/cron-store-archiver.sh`, `17 * * * *`) — flock-enforced
       single-writer, dated logs (14-day prune), `ARCHIVE_BACKEND=store` →
       R2. Old local-SQLite writer had no cron to retire (it was manual).
+- [x] **Stale-path cleanup**: old Bun web stack (`server.ts`, `serve.ts`,
+      `src/lib/{serve,stats,timeline}.ts`), `react/` client UIs, `run.sh`,
+      `clean.ts` (snapshot wiper — removed deliberately), `bun clear`,
+      tailwind/react deps, `getPolicySync`, `ARCHIVE_BACKEND` branch
+      (`doIt`/purge CLI now default to the store runtime). Local SQLite
+      backend remains as the test bed (`src/data/sqlite.ts` + `db.ts`).
+      `verify:s3` note: its local-parity premise is retired — counts now
+      legitimately drift as the cron writes while local SQLite freezes;
+      byte/integrity/probe checks remain meaningful.
 - [ ] **Next:** live wallet payment for x402 (postponed); optional
       second-bucket sync (`scripts/sync-buckets.ts`, needs a provider).
 

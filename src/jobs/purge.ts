@@ -8,7 +8,7 @@ import {
 	ReactionType,
 } from "@farcaster/core";
 import invariant from "tiny-invariant";
-import { defaultRunContext, type RunContext } from "../ctx";
+import { defaultRunContext, type RunContext, runtimeContext } from "../ctx";
 import type { ReactionEntry } from "../data/types";
 import {
 	backupMessage,
@@ -651,7 +651,9 @@ if (import.meta.main) {
 				const n = Number(rest[liveIdx + 1]);
 				if (Number.isFinite(n) && n > 0) batchN = n;
 			}
-			await purgeRun({ live, batchN });
+			// CLI targets the production archive (the bucket), not the local
+			// SQLite test bed.
+			await purgeRun({ live, batchN, ctx: runtimeContext() });
 		} else {
 			printUsage();
 			process.exitCode = sub === "" ? 0 : 1;

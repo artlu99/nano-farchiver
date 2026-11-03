@@ -26,7 +26,6 @@ export interface Env {
 	X402_MAX_TIMEOUT_SECONDS?: string;
 }
 
-let store: S3Store | undefined;
 let storeOverride: ArchiveStore | undefined;
 
 /** Test hook: use an in-memory backend instead of a real S3Store. */

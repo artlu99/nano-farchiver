@@ -3,6 +3,7 @@ import { StoreArchiveData } from "./data/store";
 import type { ArchiveData } from "./data/types";
 import type { User } from "./lib/helpers";
 import { FsRenderSink, type RenderSink, StoreRenderSink } from "./sink";
+import { S3Store, s3ConfigFromEnv } from "./store/s3";
 import type { ArchiveStore } from "./store/types";
 
 /**
@@ -33,6 +34,14 @@ export const createStoreRunContext = (store: ArchiveStore): RunContext => ({
 	userCache: new Map(),
 	out: () => new StoreRenderSink(store),
 });
+
+/**
+ * The production backend: the bucket. Used by `bun run doIt` (the hourly
+ * cron) and the purge CLI — the local SQLite backend remains available as
+ * `createSqliteRunContext()` for tests and local experiments only.
+ */
+export const runtimeContext = (): RunContext =>
+	createStoreRunContext(new S3Store(s3ConfigFromEnv()));
 
 let defaultContext: RunContext | undefined;
 

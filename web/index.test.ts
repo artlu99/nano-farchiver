@@ -78,7 +78,7 @@ beforeAll(async () => {
 	await putJSON(store, "meta/index.json", seedIndex);
 	await putJSON(
 		store,
-		"out/artlu/" + FILENAME_A,
+		`out/artlu/${FILENAME_A}`,
 		[
 			"---",
 			`hash: ${FILENAME_A.slice(17, 25)}`,

@@ -1,8 +1,4 @@
-import {
-	createStoreRunContext,
-	defaultRunContext,
-	type RunContext,
-} from "./ctx";
+import { type RunContext, runtimeContext } from "./ctx";
 import { drainMissingCasts, queueLoop } from "./jobs/read";
 import { writeLoop } from "./jobs/write";
 import { selfHealFromBackups } from "./lib/backup";
@@ -10,25 +6,16 @@ import { ARCHIVER_FID } from "./lib/config";
 import { pluralize } from "./lib/helpers";
 import { getCronFeed, getReplies } from "./lib/neynar";
 import { resetTimers, timeAsync, timerReport } from "./lib/timers";
-import { S3Store, s3ConfigFromEnv } from "./store/s3";
 
 const FID = ARCHIVER_FID;
 const FULL_CONVERSATIONS_MODE = true;
 
 /**
- * Backend selection: `ARCHIVE_BACKEND=store` runs the whole pipeline against
- * the S3-compatible bucket (casts/out/index + renders as objects); anything
- * else keeps today's local SQLite + out/ behavior. The single-writer flip
- * (MIGRATION.md stage 3) is setting this env in one deployment.
+ * The writer pipeline: fetch upstream → tag → heal → render → R2.
+ * Runs on the hourly cron via scripts/cron-store-archiver.sh (flock-enforced
+ * single writer).
  */
-const runContext = (): RunContext => {
-	if (process.env.ARCHIVE_BACKEND === "store") {
-		return createStoreRunContext(new S3Store(s3ConfigFromEnv()));
-	}
-	return defaultRunContext();
-};
-
-export const doIt = async (fid: number, ctx: RunContext = runContext()) => {
+export const doIt = async (fid: number, ctx: RunContext = runtimeContext()) => {
 	await ctx.data.deferCommits();
 	try {
 		resetTimers();

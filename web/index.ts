@@ -207,7 +207,7 @@ app.get("/api/hash/:hash/filename", async (c) => {
 	});
 });
 
-app.notFound((c) => notFoundHtml());
+app.notFound(() => notFoundHtml());
 
 app.onError((error, c) => {
 	console.error(`web error on ${c.req.path}:`, error);

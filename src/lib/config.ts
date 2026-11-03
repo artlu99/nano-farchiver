@@ -1,5 +1,4 @@
 import { defaultRunContext, type RunContext } from "../ctx";
-import { getDb } from "./db";
 
 export const ARCHIVER_FID = Number(process.env.ARCHIVER_FID ?? 3319217);
 
@@ -58,24 +57,4 @@ export const setPolicy = async (
 	const ctx = options?.ctx ?? defaultRunContext();
 	await ctx.data.setSetting(key, String(minAgeDays));
 	return { minAgeDays, source: "settings" };
-};
-
-/**
- * SQLite-only synchronous variant for the not-yet-ported sync read paths
- * (stats.ts, serve.ts). Transitional — goes away with the web-tier port
- * (MIGRATION.md stage 4), which reads settings objects async.
- */
-export const getPolicySync = (fid?: number): PurgePolicy => {
-	for (const key of policyKeys(fid)) {
-		try {
-			const row = getDb()
-				.query("SELECT value FROM settings WHERE key = ?")
-				.get(key) as { value: string } | undefined;
-			const policy = row ? fromStored(row.value) : undefined;
-			if (policy) return policy;
-		} catch {
-			// settings table unavailable — fall through to env/default
-		}
-	}
-	return fromEnv() ?? { minAgeDays: DEFAULT_MIN_AGE_DAYS, source: "default" };
 };

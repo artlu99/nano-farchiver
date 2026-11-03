@@ -14,9 +14,9 @@
  * Skips objects whose ETag already matches (idempotent); copies everything
  * else. `--dry-run` reports the delta without writing.
  */
-import { S3Store } from "../src/store/s3";
+
 import { listAllKeys } from "../src/store/indexModel";
-import type { ArchiveStore, StoredObject } from "../src/store/types";
+import { S3Store } from "../src/store/s3";
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes("--dry-run");
@@ -64,7 +64,7 @@ let failed = 0;
 for (const prefix of prefixes) {
 	const keys = await listAllKeys(source, prefix);
 	for (const key of keys) {
-		const targetObj: StoredObject | null = await target.get(key);
+		const targetObj = await target.get(key);
 		const sourceObj = await source.get(key);
 		if (!sourceObj) continue;
 		if (targetObj && targetObj.etag === sourceObj.etag) {
@@ -84,7 +84,9 @@ for (const prefix of prefixes) {
 			console.error(`copy failed for ${key}:`, error);
 		}
 	}
-	console.log(`${prefix} done (running totals: ${copied} copied, ${skipped} skipped, ${failed} failed)`);
+	console.log(
+		`${prefix} done (running totals: ${copied} copied, ${skipped} skipped, ${failed} failed)`,
+	);
 }
 
 console.log(
