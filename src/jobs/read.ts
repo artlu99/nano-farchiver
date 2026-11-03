@@ -1,8 +1,8 @@
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { cluster } from "radash";
+import { defaultRunContext, type RunContext } from "../ctx";
 import { mapWithConcurrency } from "../lib/concurrency";
-import { getDb } from "../lib/db";
-import { normalizeHash, quoteHashes, type User } from "../lib/helpers";
+import { normalizeHash, type User } from "../lib/helpers";
 import { getCasts, getConversation } from "../lib/neynar";
 import { getUserFromShim } from "../lib/shim";
 import { traverse } from "../lib/snapchain";
@@ -10,73 +10,44 @@ import { renderCast } from "./write";
 
 const VERBOSE = false;
 
-const missingCastHashes = new Set<string>();
-
-export const isCastDeleted = (hash: string): boolean => {
-	const with0x = normalizeHash(hash);
-	const row = getDb()
-		.query("SELECT 1 as one FROM deleted_casts WHERE hash = ?")
-		.get(with0x) as { one: 1 } | undefined;
-	return !!row;
-};
+export const isCastDeleted = (
+	hash: string,
+	ctx: RunContext = defaultRunContext(),
+): Promise<boolean> => ctx.data.isDeleted(hash);
 
 export const markCastsDeleted = (
 	hashes: string[],
 	reason: string,
 	deletedAt: number = Date.now(),
-): number => {
-	if (hashes.length === 0) return 0;
-	const insert = getDb().prepare(
-		"INSERT OR IGNORE INTO deleted_casts (hash, deleted_at, reason) VALUES (?, ?, ?)",
-	);
-	const tx = getDb().transaction((rows: { hash: string }[]) => {
-		for (const r of rows) {
-			insert.run(normalizeHash(r.hash), deletedAt, reason);
-		}
-	});
-	tx(hashes.map((hash) => ({ hash })));
-	return hashes.length;
+	ctx: RunContext = defaultRunContext(),
+): Promise<number> => {
+	if (hashes.length === 0) return Promise.resolve(0);
+	return ctx.data
+		.markDeleted(hashes, reason, deletedAt)
+		.then(() => hashes.length);
 };
 
-export const filterNonDeletedCastHashes = (hashes: string[]): string[] => {
-	if (hashes.length === 0) return [];
-	const normalized = hashes.map(normalizeHash);
-	const placeholders = normalized.map(() => "?").join(", ");
-	const deleted = getDb()
-		.query(`SELECT hash FROM deleted_casts WHERE hash IN (${placeholders})`)
-		.all(...normalized) as { hash: string }[];
-	const deletedSet = new Set(deleted.map((r) => r.hash));
-	return normalized.filter((h) => !deletedSet.has(h));
+export const filterNonDeletedCastHashes = (
+	hashes: string[],
+	ctx: RunContext = defaultRunContext(),
+): Promise<string[]> => ctx.data.filterNotDeleted(hashes);
+
+export const hasCastInDb = (
+	hash: string,
+	ctx: RunContext = defaultRunContext(),
+): Promise<boolean> => ctx.data.hasCast(hash);
+
+export const clearUserCache = (ctx: RunContext = defaultRunContext()): void => {
+	ctx.userCache.clear();
 };
 
-export const hasCastInDb = (hash: string): boolean => {
-	const with0x = normalizeHash(hash);
-	const without0x = with0x.replace(/^0x/, "");
-	if (isCastDeleted(with0x) || isCastDeleted(without0x)) return true;
-	const row =
-		(getDb().query("SELECT 1 as one FROM casts WHERE hash = ?").get(with0x) as
-			| { one: 1 }
-			| undefined) ??
-		(getDb()
-			.query("SELECT 1 as one FROM casts WHERE hash = ?")
-			.get(without0x) as { one: 1 } | undefined);
-	return !!row;
-};
-
-const userCache = new Map<number, User>();
-
-export const clearUserCache = () => {
-	userCache.clear();
-};
-
-export const getUserFromFid = async (fid: number): Promise<User> => {
-	const cached = userCache.get(fid);
+export const getUserFromFid = async (
+	fid: number,
+	ctx: RunContext = defaultRunContext(),
+): Promise<User> => {
+	const cached = ctx.userCache.get(fid);
 	if (cached) return cached;
-	const user = getDb()
-		.query(
-			"SELECT fid, username, displayName, avatar, bio FROM users WHERE fid = ?",
-		)
-		.get(fid) as User | undefined;
+	const user = await ctx.data.getUser(fid);
 	if (!user) {
 		try {
 			const shimUser = await getUserFromShim(fid);
@@ -87,89 +58,72 @@ export const getUserFromFid = async (fid: number): Promise<User> => {
 			);
 		}
 	}
-	userCache.set(fid, user);
+	ctx.userCache.set(fid, user);
 	return user;
 };
 
-export const getCastFromHash = (
+export const getCastFromHash = async (
 	hash: string,
 	fid: number | undefined,
-): Cast | undefined => {
+	ctx: RunContext = defaultRunContext(),
+): Promise<Cast | undefined> => {
 	const with0x = normalizeHash(hash);
-	const without0x = with0x.replace(/^0x/, "");
-	if (isCastDeleted(with0x) || isCastDeleted(without0x)) {
+	if (await ctx.data.isDeleted(with0x)) {
 		return undefined;
 	}
-	const cast = fid
-		? ((getDb()
-				.query("SELECT data FROM casts WHERE hash = ? AND fid = ?")
-				.get(with0x, fid) as { data: string } | undefined) ??
-			(getDb()
-				.query("SELECT data FROM casts WHERE hash = ? AND fid = ?")
-				.get(without0x, fid) as { data: string } | undefined))
-		: ((getDb().query("SELECT data FROM casts WHERE hash = ?").get(with0x) as
-				| { data: string }
-				| undefined) ??
-			(getDb().query("SELECT data FROM casts WHERE hash = ?").get(without0x) as
-				| { data: string }
-				| undefined));
-	if (!cast) {
+	const data = await ctx.data.getCastData(with0x, fid);
+	if (data === undefined) {
 		console.error(`Cast with hash ${hash} [${fid}] not found in database`);
-		missingCastHashes.add(with0x);
+		ctx.missingCastHashes.add(with0x);
 		return undefined;
 	}
-	return JSON.parse(cast.data) as Cast;
+	return JSON.parse(data) as Cast;
 };
 
-export const hydrateMissingCasts = async (): Promise<number> => {
-	const hashes = Array.from(missingCastHashes);
+export const hydrateMissingCasts = async (
+	ctx: RunContext = defaultRunContext(),
+): Promise<number> => {
+	const hashes = Array.from(ctx.missingCastHashes);
 	if (hashes.length === 0) return 0;
 
-	missingCastHashes.clear();
+	ctx.missingCastHashes.clear();
 	await Promise.all(cluster(hashes, 25).map((chunk) => getCasts(chunk)));
 	for (const hash of hashes) {
-		if (!hasCastInDb(hash)) {
-			missingCastHashes.add(hash);
+		if (!(await hasCastInDb(hash, ctx))) {
+			ctx.missingCastHashes.add(hash);
 		}
 	}
 	return hashes.length;
 };
 
-export const getMissingCastCount = (): number => missingCastHashes.size;
+export const getMissingCastCount = (
+	ctx: RunContext = defaultRunContext(),
+): number => ctx.missingCastHashes.size;
 
 export const drainMissingCasts = async (
 	maxRounds: number = 5,
+	ctx: RunContext = defaultRunContext(),
 ): Promise<number> => {
 	let total = 0;
 	for (let i = 0; i < maxRounds; i++) {
-		const hydrated = await hydrateMissingCasts();
+		const hydrated = await hydrateMissingCasts(ctx);
 		total += hydrated;
 		if (hydrated === 0) break;
 	}
 	return total;
 };
 
-export const missingParentHashes = (): string[] =>
-	(
-		getDb()
-			.query(
-				`
-SELECT DISTINCT parent_hash as hash
-FROM casts
-WHERE parent_hash IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM casts c2 WHERE c2.hash = casts.parent_hash)
-  AND NOT EXISTS (SELECT 1 FROM deleted_casts d WHERE d.hash = casts.parent_hash)
-`,
-			)
-			.all() as { hash: string }[]
-	).map((r) => r.hash);
+export const missingParentHashes = (
+	ctx: RunContext = defaultRunContext(),
+): Promise<string[]> => ctx.data.missingParentHashes();
 
 export const hydrateReferencedParents = async (
 	maxRounds: number = 5,
+	ctx: RunContext = defaultRunContext(),
 ): Promise<number> => {
 	let total = 0;
 	for (let i = 0; i < maxRounds; i++) {
-		const missingParents = missingParentHashes();
+		const missingParents = await missingParentHashes(ctx);
 
 		if (missingParents.length === 0) break;
 
@@ -181,26 +135,17 @@ export const hydrateReferencedParents = async (
 	return total;
 };
 
-export const missingQuotedHashes = (): string[] =>
-	(
-		getDb()
-			.query(
-				`
-SELECT DISTINCT quoted_hash as hash
-FROM cast_quotes
-WHERE NOT EXISTS (SELECT 1 FROM casts c WHERE c.hash = cast_quotes.quoted_hash)
-  AND NOT EXISTS (SELECT 1 FROM deleted_casts d WHERE d.hash = cast_quotes.quoted_hash)
-`,
-			)
-			.all() as { hash: string }[]
-	).map((r) => r.hash);
+export const missingQuotedHashes = (
+	ctx: RunContext = defaultRunContext(),
+): Promise<string[]> => ctx.data.missingQuotedHashes();
 
 export const hydrateQuotedCastEmbeds = async (
 	maxRounds: number = 5,
+	ctx: RunContext = defaultRunContext(),
 ): Promise<number> => {
 	let total = 0;
 	for (let i = 0; i < maxRounds; i++) {
-		const missing = missingQuotedHashes();
+		const missing = await missingQuotedHashes(ctx);
 		if (missing.length === 0) break;
 		total += missing.length;
 		await Promise.all(cluster(missing, 25).map((chunk) => getCasts(chunk)));
@@ -208,79 +153,28 @@ export const hydrateQuotedCastEmbeds = async (
 	return total;
 };
 
-export const countReplies = (fid: number, hash: string): number => {
-	const res = getDb()
-		.query(
-			"SELECT count(1) as count FROM casts WHERE parent_hash = ? AND parent_fid = ?",
-		)
-		.get(hash, fid) as { count: number } | undefined;
-	if (!res) {
-		return 0;
-	}
-	return res.count;
-};
+export const countReplies = (
+	fid: number,
+	hash: string,
+	ctx: RunContext = defaultRunContext(),
+): Promise<number> => ctx.data.countReplies(fid, hash);
 
-export const tagCast = (cast: Cast) => {
-	const normalizedHash = normalizeHash(cast.hash);
-	const normalizedParentHash = cast.parent_hash
-		? normalizeHash(cast.parent_hash)
-		: cast.parent_hash;
-
-	if (VERBOSE) console.log(cast.author.fid, normalizedHash);
-	// If this cast was previously observed missing, clear it now that it's present.
-	missingCastHashes.delete(normalizedHash);
-	getDb()
-		.prepare(
-			"INSERT INTO users (fid, username, displayName, avatar, bio) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-		)
-		.run(
-			cast.author.fid,
-			cast.author.username ?? null,
-			cast.author.display_name ?? null,
-			cast.author.pfp_url ?? null,
-			cast.author.profile.bio.text ?? null,
-		);
-	getDb()
-		.prepare(
-			"INSERT INTO casts (hash, fid, data, parent_fid, parent_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-		)
-		.run(
-			normalizedHash,
-			cast.author.fid,
-			JSON.stringify(cast),
-			cast.parent_author?.fid,
-			normalizedParentHash,
-		);
-	const quoteInsert = getDb().prepare(
-		"INSERT OR IGNORE INTO cast_quotes (cast_hash, quoted_hash) VALUES (?, ?)",
-	);
-	for (const quoted of quoteHashes(cast)) {
-		quoteInsert.run(normalizedHash, quoted);
-	}
-};
-
-export const tagCasts = (casts: Cast[]) => {
-	if (casts.length === 0) return;
-	const tx = getDb().transaction((rows: Cast[]) => {
-		for (const cast of rows) {
-			tagCast(cast);
-		}
-	});
-	tx(casts);
-};
-
-const processQueuedCast = async (c: Cast, fullConversationsMode: boolean) => {
-	tagCast(c);
+const processQueuedCast = async (
+	c: Cast,
+	fullConversationsMode: boolean,
+	ctx: RunContext,
+) => {
+	await tagCast(c, ctx);
 
 	if (!fullConversationsMode) return;
 
 	const phases: Promise<void>[] = [];
 
 	if (c.thread_hash) {
-		phases.push(tagThreadConversation(c.thread_hash));
+		phases.push(tagThreadConversation(c.thread_hash, ctx));
 	}
 
-	phases.push(tagReplies(c.hash));
+	phases.push(tagReplies(c.hash, ctx));
 
 	if (c.parent_author?.fid && c.parent_hash) {
 		phases.push(hydrateFullThread(c.parent_author.fid, c.parent_hash));
@@ -296,7 +190,7 @@ const processQueuedCast = async (c: Cast, fullConversationsMode: boolean) => {
 	if (VERBOSE) console.log(await renderCast(c));
 };
 
-const tagThreadConversation = async (threadHash: string) => {
+const tagThreadConversation = async (threadHash: string, ctx: RunContext) => {
 	const conversation = await getConversation(threadHash);
 	if (VERBOSE) {
 		console.log(
@@ -305,20 +199,26 @@ const tagThreadConversation = async (threadHash: string) => {
 		console.log(conversation.conversation.cast.direct_replies.length);
 		console.log(conversation.next?.cursor ?? "no cursor");
 	}
-	tagCasts([
-		conversation.conversation.cast,
-		...(conversation.conversation.chronological_parent_casts ?? []),
-		...conversation.conversation.cast.direct_replies,
-	]);
+	await tagCasts(
+		[
+			conversation.conversation.cast,
+			...(conversation.conversation.chronological_parent_casts ?? []),
+			...conversation.conversation.cast.direct_replies,
+		],
+		ctx,
+	);
 };
 
-const tagReplies = async (hash: string) => {
+const tagReplies = async (hash: string, ctx: RunContext) => {
 	const replies = await getConversation(hash);
-	tagCasts([
-		replies.conversation.cast,
-		...(replies.conversation.chronological_parent_casts ?? []),
-		...replies.conversation.cast.direct_replies,
-	]);
+	await tagCasts(
+		[
+			replies.conversation.cast,
+			...(replies.conversation.chronological_parent_casts ?? []),
+			...replies.conversation.cast.direct_replies,
+		],
+		ctx,
+	);
 };
 
 const hydrateFullThread = async (fid: number, hash: string) => {
@@ -330,12 +230,30 @@ const hydrateFullThread = async (fid: number, hash: string) => {
 	);
 };
 
+export const tagCast = (
+	cast: Cast,
+	ctx: RunContext = defaultRunContext(),
+): Promise<void> => tagCasts([cast], ctx);
+
+export const tagCasts = async (
+	casts: Cast[],
+	ctx: RunContext = defaultRunContext(),
+): Promise<void> => {
+	if (casts.length === 0) return;
+	// A cast being tagged is, by definition, no longer missing.
+	for (const cast of casts) {
+		ctx.missingCastHashes.delete(normalizeHash(cast.hash));
+	}
+	await ctx.data.tagCasts(casts);
+};
+
 export const queueLoop = async (
 	casts: Cast[],
 	fullConversationsMode: boolean = true,
 	concurrency: number = 3,
+	ctx: RunContext = defaultRunContext(),
 ) => {
 	await mapWithConcurrency(casts, concurrency, (c) =>
-		processQueuedCast(c, fullConversationsMode),
+		processQueuedCast(c, fullConversationsMode, ctx),
 	);
 };

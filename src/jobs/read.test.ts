@@ -41,27 +41,27 @@ beforeEach(() => {
 });
 
 describe("tagCast", () => {
-	test("stores cast and user rows", () => {
-		tagCast(makeCast());
+	test("stores cast and user rows", async () => {
+		await tagCast(makeCast());
 		expect(scalar("SELECT count(1) as n FROM casts")).toBe(1);
 		expect(scalar("SELECT count(1) as n FROM users")).toBe(1);
 	});
 
-	test("is idempotent on repeated inserts", () => {
+	test("is idempotent on repeated inserts", async () => {
 		const cast = makeCast();
-		tagCast(cast);
-		tagCast(cast);
+		await tagCast(cast);
+		await tagCast(cast);
 		expect(scalar("SELECT count(1) as n FROM casts")).toBe(1);
 	});
 
-	test("normalizes parent_hash to 0x form", () => {
+	test("normalizes parent_hash to 0x form", async () => {
 		const parent = makeCast();
 		const bareParentHash = parent.hash.replace(/^0x/, "");
 		const reply = makeCast({
 			parent_hash: bareParentHash,
 			parent_author: { fid: 99 },
 		});
-		tagCast(reply);
+		await tagCast(reply);
 		const row = getDb()
 			.query("SELECT parent_hash, parent_fid FROM casts WHERE hash = ?")
 			.get(normalizeHash(reply.hash)) as {
@@ -74,114 +74,114 @@ describe("tagCast", () => {
 });
 
 describe("hasCastInDb", () => {
-	test("accepts 0x and bare hash forms", () => {
+	test("accepts 0x and bare hash forms", async () => {
 		const cast = makeCast();
-		tagCast(cast);
-		expect(hasCastInDb(cast.hash)).toBe(true);
-		expect(hasCastInDb(cast.hash.replace(/^0x/, ""))).toBe(true);
-		expect(hasCastInDb(makeHash())).toBe(false);
+		await tagCast(cast);
+		expect(await hasCastInDb(cast.hash)).toBe(true);
+		expect(await hasCastInDb(cast.hash.replace(/^0x/, ""))).toBe(true);
+		expect(await hasCastInDb(makeHash())).toBe(false);
 	});
 
-	test("treats deleted casts as present", () => {
+	test("treats deleted casts as present", async () => {
 		const hash = makeHash();
-		markCastsDeleted([hash], "test");
-		expect(hasCastInDb(hash)).toBe(true);
+		await markCastsDeleted([hash], "test");
+		expect(await hasCastInDb(hash)).toBe(true);
 	});
 });
 
 describe("deleted casts", () => {
-	test("markCastsDeleted filters hashes regardless of 0x prefix", () => {
+	test("markCastsDeleted filters hashes regardless of 0x prefix", async () => {
 		const keep = makeHash();
 		const drop = makeHash();
-		markCastsDeleted([drop], "test");
-		expect(isCastDeleted(drop)).toBe(true);
-		expect(isCastDeleted(drop.replace(/^0x/, ""))).toBe(true);
-		expect(isCastDeleted(keep)).toBe(false);
-		expect(filterNonDeletedCastHashes([keep, drop.replace(/^0x/, "")])).toEqual(
-			[keep],
-		);
+		await markCastsDeleted([drop], "test");
+		expect(await isCastDeleted(drop)).toBe(true);
+		expect(await isCastDeleted(drop.replace(/^0x/, ""))).toBe(true);
+		expect(await isCastDeleted(keep)).toBe(false);
+		expect(
+			await filterNonDeletedCastHashes([keep, drop.replace(/^0x/, "")]),
+		).toEqual([keep]);
 	});
 
-	test("filterNonDeletedCastHashes handles empty input", () => {
-		expect(filterNonDeletedCastHashes([])).toEqual([]);
+	test("filterNonDeletedCastHashes handles empty input", async () => {
+		expect(await filterNonDeletedCastHashes([])).toEqual([]);
 	});
 });
 
 describe("countReplies", () => {
-	test("matches on parent_hash and parent_fid together", () => {
+	test("matches on parent_hash and parent_fid together", async () => {
 		const parent = makeCast();
-		tagCast(parent);
-		tagCast(makeReply(parent));
+		await tagCast(parent);
+		await tagCast(makeReply(parent));
 
 		const other = makeCast({ author: { fid: 42 } });
-		tagCast(other);
-		tagCast(
+		await tagCast(other);
+		await tagCast(
 			makeCast({
 				parent_hash: parent.hash,
 				parent_author: { fid: other.author.fid },
 			}),
 		);
 
-		expect(countReplies(parent.author.fid, parent.hash)).toBe(1);
-		expect(countReplies(other.author.fid, parent.hash)).toBe(1);
-		expect(countReplies(parent.author.fid, other.hash)).toBe(0);
+		expect(await countReplies(parent.author.fid, parent.hash)).toBe(1);
+		expect(await countReplies(other.author.fid, parent.hash)).toBe(1);
+		expect(await countReplies(parent.author.fid, other.hash)).toBe(0);
 	});
 });
 
 describe("getCastFromHash", () => {
-	test("roundtrips stored cast data with bare hash lookup", () => {
+	test("roundtrips stored cast data with bare hash lookup", async () => {
 		const cast = makeCast();
-		tagCast(cast);
-		const fetched = getCastFromHash(
+		await tagCast(cast);
+		const fetched = await getCastFromHash(
 			cast.hash.replace(/^0x/, ""),
 			cast.author.fid,
 		);
 		expect(fetched?.hash).toBe(cast.hash);
 	});
 
-	test("returns undefined for deleted casts", () => {
+	test("returns undefined for deleted casts", async () => {
 		const cast = makeCast();
-		tagCast(cast);
-		markCastsDeleted([cast.hash], "test");
-		expect(getCastFromHash(cast.hash, cast.author.fid)).toBeUndefined();
+		await tagCast(cast);
+		await markCastsDeleted([cast.hash], "test");
+		expect(await getCastFromHash(cast.hash, cast.author.fid)).toBeUndefined();
 	});
 
-	test("tracks missing hashes and clears them on tagCast", () => {
+	test("tracks missing hashes and clears them on tagCast", async () => {
 		const before = getMissingCastCount();
 		const hash = makeHash();
-		expect(getCastFromHash(hash, undefined)).toBeUndefined();
+		expect(await getCastFromHash(hash, undefined)).toBeUndefined();
 		expect(getMissingCastCount()).toBe(before + 1);
-		tagCast(makeCast({ hash }));
+		await tagCast(makeCast({ hash }));
 		expect(getMissingCastCount()).toBe(before);
 	});
 });
 
 describe("missingParentHashes", () => {
-	test("finds absent parents, skips deleted, empties when satisfied", () => {
+	test("finds absent parents, skips deleted, empties when satisfied", async () => {
 		const parent = makeCast();
 		const deletedParent = makeCast();
-		markCastsDeleted([deletedParent.hash], "test");
+		await markCastsDeleted([deletedParent.hash], "test");
 
-		tagCast(makeReply(parent));
-		tagCast(makeReply(deletedParent));
+		await tagCast(makeReply(parent));
+		await tagCast(makeReply(deletedParent));
 
-		expect(missingParentHashes()).toEqual([parent.hash]);
+		expect(await missingParentHashes()).toEqual([parent.hash]);
 
-		tagCast(parent);
-		expect(missingParentHashes()).toEqual([]);
+		await tagCast(parent);
+		expect(await missingParentHashes()).toEqual([]);
 	});
 });
 
 describe("tagCasts", () => {
-	test("batches inserts transactionally and idempotently", () => {
+	test("batches inserts transactionally and idempotently", async () => {
 		const cast = makeCast();
-		tagCasts([cast, cast, makeCast()]);
+		await tagCasts([cast, cast, makeCast()]);
 		expect(scalar("SELECT count(1) as n FROM casts")).toBe(2);
 		expect(scalar("SELECT count(1) as n FROM users")).toBe(1);
 	});
 
-	test("handles empty input", () => {
-		tagCasts([]);
+	test("handles empty input", async () => {
+		await tagCasts([]);
 		expect(scalar("SELECT count(1) as n FROM casts")).toBe(0);
 	});
 });
@@ -201,25 +201,25 @@ describe("parent index", () => {
 });
 
 describe("cast_quotes", () => {
-	test("tagCast records quote embeds with normalized hashes", () => {
+	test("tagCast records quote embeds with normalized hashes", async () => {
 		const quoted = makeCast();
-		tagCast(quoted);
-		tagCast(withQuoteEmbed(quoted, true));
+		await tagCast(quoted);
+		await tagCast(withQuoteEmbed(quoted, true));
 		expect(scalar("SELECT count(1) as n FROM cast_quotes")).toBe(1);
 	});
 
-	test("missingQuotedHashes matches legacy JSON scan exactly", () => {
+	test("missingQuotedHashes matches legacy JSON scan exactly", async () => {
 		const quotedPresent = makeCast();
 		const quotedAbsent = makeCast();
 		const quotedDeleted = makeCast();
-		markCastsDeleted([quotedDeleted.hash], "test");
+		await markCastsDeleted([quotedDeleted.hash], "test");
 
-		tagCasts([
+		await tagCasts([
 			withQuoteEmbed(quotedPresent),
 			withQuoteEmbed(quotedAbsent),
 			withQuoteEmbed(quotedDeleted),
 		]);
-		tagCast(quotedPresent);
+		await tagCast(quotedPresent);
 
 		const legacy = new Set<string>();
 		for (const { data } of getDb().query("SELECT data FROM casts").all() as {
@@ -233,19 +233,19 @@ describe("cast_quotes", () => {
 					typeof embed.cast_id.hash === "string"
 				) {
 					const hash = normalizeHash(embed.cast_id.hash);
-					if (!hasCastInDb(hash)) legacy.add(hash);
+					if (!(await hasCastInDb(hash))) legacy.add(hash);
 				}
 			}
 		}
 
-		expect(missingQuotedHashes().sort()).toEqual([...legacy].sort());
-		expect(missingQuotedHashes()).toEqual([quotedAbsent.hash]);
+		expect((await missingQuotedHashes()).sort()).toEqual([...legacy].sort());
+		expect(await missingQuotedHashes()).toEqual([quotedAbsent.hash]);
 	});
 });
 
 describe("getUserFromFid", () => {
 	test("returns seeded user and memoizes the instance", async () => {
-		tagCast(makeCast());
+		await tagCast(makeCast());
 		const first = await getUserFromFid(3319217);
 		expect(first.username).toBe("artlu");
 		const second = await getUserFromFid(3319217);
@@ -254,19 +254,21 @@ describe("getUserFromFid", () => {
 });
 
 describe("file db", () => {
-	const withTempDb = (fn: (dbPath: string) => void) => {
+	const withTempDb = async (
+		fn: (dbPath: string) => void | Promise<void>,
+	): Promise<void> => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "farchiver-"));
 		try {
-			fn(path.join(dir, "queue.db3"));
+			await fn(path.join(dir, "queue.db3"));
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
 	};
 
-	test("runs in WAL mode and batched writes survive reopen", () => {
-		withTempDb((dbPath) => {
+	test("runs in WAL mode and batched writes survive reopen", async () => {
+		await withTempDb(async (dbPath) => {
 			initDb(dbPath);
-			tagCasts([makeCast()]);
+			await tagCasts([makeCast()]);
 			const mode = getDb().query("PRAGMA journal_mode").get() as {
 				journal_mode: string;
 			};
@@ -276,8 +278,8 @@ describe("file db", () => {
 		});
 	});
 
-	test("backfills cast_quotes from a legacy db without the table", () => {
-		withTempDb((dbPath) => {
+	test("backfills cast_quotes from a legacy db without the table", async () => {
+		await withTempDb(async (dbPath) => {
 			const legacy = new Database(dbPath);
 			legacy.run(
 				"CREATE TABLE casts (hash TEXT PRIMARY KEY, fid INTEGER, data TEXT, parent_fid INTEGER, parent_hash TEXT)",
@@ -298,8 +300,8 @@ describe("file db", () => {
 			legacy.close();
 
 			initDb(dbPath);
-			tagCast(quotedPresent);
-			expect(missingQuotedHashes()).toEqual([quotedAbsent.hash]);
+			await tagCast(quotedPresent);
+			expect(await missingQuotedHashes()).toEqual([quotedAbsent.hash]);
 			const index = getDb()
 				.query(
 					"SELECT 1 as one FROM sqlite_master WHERE type = 'index' AND name = 'idx_casts_parent'",
@@ -308,7 +310,7 @@ describe("file db", () => {
 			expect(index).toBeTruthy();
 
 			initDb(dbPath);
-			expect(missingQuotedHashes()).toEqual([quotedAbsent.hash]);
+			expect(await missingQuotedHashes()).toEqual([quotedAbsent.hash]);
 		});
 	});
 });

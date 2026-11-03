@@ -1,0 +1,23 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181520511,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "the most pleasing, magical, and token-burning luxury prompt:\n\n\"please address all the lint debt\"",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x305c659729b8305dc3cef66ac91afb5d14487c8a",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "hNi3UuS9TgX7+XjxlT8HlFKLXXMuG1wLem6QtYF0+ExknXfA0T7ehXzO92PKl0ogHbU06mkbvLU+BjBUhQvBDA==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

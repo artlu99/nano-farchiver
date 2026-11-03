@@ -1,0 +1,23 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181843325,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "dkm\n\nam coding with nearly-free open-weights models\n\n>6 months after ppl said sota models were good enough\n\nto stop reading code\n\n(if you do it the right way)\n\non mildly challenging but highly annoying tasks\n\nwith clear prompting, adversarial review\n\nI still end up cleaning up after them manually\n\nhere's an example. Upgrading a project from TS6 to TS7\n\nagents did 99% of the work\n\njust a step above grunt work, but requires some context of the project\n\nmy IDE flagged an issue, after passing tests and strict linting\n\nmultiple agent passes had left behind low-hanging tech debt\n\nthat was trivial to address\n\nand well-documented\n\nmaybe that's the point, humans over-clean? easy tech debt should be left for a cheaper future???",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "LONG_CAST"
+		}
+	},
+	"hash": "0x9d30ad2c90a50dd96b2ed3a77a989e685c0c7f55",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "nUPCX7amO/Qsc9CylYP1S8iBp2W+6v7d8eJDOAitjleA72hMDSCebdHzfu/jr19wdr1sbeIyu7FF0XdGNY6NDw==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

@@ -1,0 +1,30 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180908278,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "IF great programmers are lazy programmers \n\nthen I just had a Great and Lazy Thought \n\ncodex-like models will wrap jev-like approaches\n\nin the same way they currently wrap ripgrep, adhoc python scripting, and one-shot 3js interactive viz\n\nAND\n\nllms will learn how to do this, faster cheaper and better than me\n\nI can just wait for free markets to grind my cost down to marginal cost of production",
+			"embeds": [
+				{
+					"url": "https://fxtwitter.com/kieranklaassen/status/2103522599414501550"
+				},
+				{
+					"url": "https://cdn.artlu.xyz/2VOL9lv52Vk"
+				}
+			],
+			"mentionsPositions": [],
+			"type": "LONG_CAST"
+		}
+	},
+	"hash": "0x5cb4704bf40464404c4d8de3206a1870c08071d1",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "jLfNua1tSXsSRdGNTrJv1ce7NhkNP4ycwxNq6fL03+tPgYXwUi1Xx1bUmO+sICvfqWgTqy6s/9VkJUXP0jRMAw==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

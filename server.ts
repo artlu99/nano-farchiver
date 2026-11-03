@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
@@ -22,7 +22,10 @@ import { createPaywall, evmPaywall } from "@x402/paywall";
 import { Hono } from "hono";
 import { getAddress } from "viem";
 import { doIt } from "./src/index";
+import * as purge from "./src/jobs/purge";
+import { ARCHIVER_FID, getPolicy, setPolicy } from "./src/lib/config";
 import { serveBrowse, serveBrowseFile, servePreview } from "./src/lib/serve";
+import { archiveStats } from "./src/lib/stats";
 import { serveTimeline } from "./src/lib/timeline";
 import { withTimeout } from "./src/lib/timeouts";
 
@@ -72,7 +75,7 @@ const startedAt = Date.now();
 const LOCK_PATH = "db/doIt.lock";
 const LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const JOB_TIMEOUT_MS = LOCK_TTL_MS - 5000; // slightly less than TTL
-const DEFAULT_FID = 3319217;
+const DEFAULT_FID = ARCHIVER_FID;
 const DEFAULT_USERNAME = "decent-artlu";
 const PREVIEW_LENGTH = 60;
 const TIMELINE_LIMIT = 20;
@@ -454,6 +457,111 @@ app.post("/doIt", async (c) => {
 app.post("/clear", async (c) => {
 	await rm("db/cache.db3", { force: true });
 	return c.text("Cache cleared", 200);
+});
+
+// ---------------------------------------------------------------------------
+// Purge policy (public) + review surface (fail-closed, token-gated)
+// ---------------------------------------------------------------------------
+
+app.get("/api/policy", (c) => {
+	const policy = getPolicy();
+	return c.json({ min_age_days: policy.minAgeDays, source: policy.source });
+});
+
+app.get("/api/archive/stats", (c) => {
+	return c.json(archiveStats());
+});
+
+const REVIEW_TOKEN = process.env.REVIEW_TOKEN;
+
+const reviewAuthorized = (c: {
+	req: {
+		header: (n: string) => string | undefined;
+		query: (n: string) => string | undefined;
+	};
+}): boolean => {
+	if (!REVIEW_TOKEN) return false; // unset ⇒ the whole review surface is 404
+	const provided =
+		c.req.header("authorization")?.replace(/^Bearer\s+/i, "") ??
+		c.req.query("token") ??
+		"";
+	const a = Buffer.from(provided);
+	const b = Buffer.from(REVIEW_TOKEN);
+	return a.length === b.length && timingSafeEqual(a, b);
+};
+
+app.use("/review/*", async (c, next) => {
+	if (!reviewAuthorized(c)) return c.notFound();
+	await next();
+});
+
+app.get("/review/candidates", async (c) => {
+	const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+	return c.json(await purge.candidatesForReview(page, 50));
+});
+
+app.get("/review/deleted", async (c) => {
+	const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+	return c.json(purge.deletedLedger(page, 50));
+});
+
+app.post("/review/like/:hash", async (c) => {
+	try {
+		await purge.likeCast(c.req.param("hash"));
+		return c.json({ ok: true });
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : String(error) },
+			400,
+		);
+	}
+});
+
+app.post("/review/delete/:hash", async (c) => {
+	try {
+		await purge.deleteOne(c.req.param("hash"));
+		return c.json({ ok: true });
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : String(error) },
+			400,
+		);
+	}
+});
+
+app.post("/review/verify-all", async (c) => {
+	try {
+		return c.json(await purge.verifyAll(100));
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : String(error) },
+			400,
+		);
+	}
+});
+
+app.post("/review/purge", async (c) => {
+	try {
+		return c.json(await purge.purgeVerifiedBatch());
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : String(error) },
+			400,
+		);
+	}
+});
+
+app.post("/review/policy", async (c) => {
+	try {
+		const body = (await c.req.json()) as { min_age_days?: number };
+		const policy = setPolicy(Number(body.min_age_days));
+		return c.json({ min_age_days: policy.minAgeDays, source: policy.source });
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : String(error) },
+			400,
+		);
+	}
 });
 
 const x402Gate = paymentMiddlewareFromHTTPServer(

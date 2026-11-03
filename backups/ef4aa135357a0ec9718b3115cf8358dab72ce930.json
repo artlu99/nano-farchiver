@@ -1,0 +1,26 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181531607,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 3319217,
+				"hash": "0x82bfd2bee0f5691a71eecc951c7c7fbb1017c93c"
+			},
+			"parentUrl": null,
+			"text": "timestamp: blyg is live",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0xef4aa135357a0ec9718b3115cf8358dab72ce930",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "BvknM+rngioCglpfoyFBAx0wYtHynRNpnvffRo3ThrYcuZVCbj/x4libdDqScKfBQ4OVNCA/tNQ2jagRGjAcAQ==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

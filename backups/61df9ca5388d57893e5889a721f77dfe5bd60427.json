@@ -1,0 +1,26 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180932830,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 212233,
+				"hash": "0x9a7bc2e5c40d391f61aec7d8d5cf547282b2f193"
+			},
+			"parentUrl": null,
+			"text": "me too, my sisters 😉 ",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x61df9ca5388d57893e5889a721f77dfe5bd60427",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "f3UuODVyoMSspNkwGtJw5jpcPEmX6eKRUjLHssH/LtiQjtKP2LRO5ypfl6/35rnJEVPUQ0jZiX/GcLJuiTaCDA==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0xb776826db247f05b7653f43ad136a1e5a772463739455c33b79b94fad8e554c2"
+}

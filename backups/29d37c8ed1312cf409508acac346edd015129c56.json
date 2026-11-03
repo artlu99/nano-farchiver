@@ -1,0 +1,23 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181870278,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "finally took the plunge to try T3 Code. Sooo good.\n\nPainless multi-surface control plane, auto-discovery of existing subs, I get to leverage all my existing agent-driving knowledge while opening easy paths to more",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x29d37c8ed1312cf409508acac346edd015129c56",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "LeYsMZoR3wfM30OkOR58zdcrNpuo2stmpXUIu/dgeYnGvtR5nZQmRqVE/hbiBRMaRcrZQdPPGdubFu/Ni+nXBw==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

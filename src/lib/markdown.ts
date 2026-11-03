@@ -4,6 +4,7 @@ import type {
 	EmbedUrl,
 	EmbedUrlMetadata,
 } from "@neynar/nodejs-sdk/build/api";
+import { defaultRunContext, type RunContext } from "../ctx";
 import {
 	drainMissingCasts,
 	getCastFromHash,
@@ -15,8 +16,11 @@ import { hash2filename, normalizeHash, pluralize } from "./helpers";
 const IMAGE_URL_RE = /\.(png|jpe?g|gif|webp|avif)(\?|$)/i;
 const QUOTE_PREVIEW_LENGTH = 200;
 
-export const renderUserHeader = async (fid: number): Promise<string> => {
-	const user = await getUserFromFid(fid);
+export const renderUserHeader = async (
+	fid: number,
+	ctx: RunContext = defaultRunContext(),
+): Promise<string> => {
+	const user = await getUserFromFid(fid, ctx);
 	return `
 username: ${user.username ?? "unknown"}
 fid: ${user.fid}
@@ -28,8 +32,11 @@ ${user.avatar ? `<img src="${user.avatar}" height="100" width="100" alt="${user.
     `.trim();
 };
 
-export const renderTopLevelHeader = async (cast: Cast): Promise<string> => {
-	const renderedCast = await renderCast(cast);
+export const renderTopLevelHeader = async (
+	cast: Cast,
+	ctx: RunContext = defaultRunContext(),
+): Promise<string> => {
+	const renderedCast = await renderCast(cast, ctx);
 	return `
 ---
 hash: ${renderedCast.hash.replace(/^0x/, "")}
@@ -43,11 +50,12 @@ fid: ${renderedCast.fid}
 export const castArchiveRelativePath = async (
 	hash: string,
 	fid: number,
+	ctx: RunContext = defaultRunContext(),
 ): Promise<string | "<deleted>" | undefined> => {
-	const quotedCast = getCastFromHash(hash, fid);
+	const quotedCast = await getCastFromHash(hash, fid, ctx);
 	if (!quotedCast) return undefined;
 
-	const user = await getUserFromFid(fid);
+	const user = await getUserFromFid(fid, ctx);
 	if (!user?.username) return undefined;
 
 	if (!quotedCast.timestamp) return "<deleted>";
@@ -55,21 +63,32 @@ export const castArchiveRelativePath = async (
 	return `../${user.username}/${hash2filename(hash, quotedCast.timestamp)}`;
 };
 
-export const renderReplyHeader = async (cast: Cast): Promise<string> => {
-	const renderedCast = await renderCast(cast);
+export const renderReplyHeader = async (
+	cast: Cast,
+	ctx: RunContext = defaultRunContext(),
+): Promise<string> => {
+	const renderedCast = await renderCast(cast, ctx);
 	let parentCast =
 		renderedCast.parent_fid && renderedCast.parent_hash
-			? getCastFromHash(renderedCast.parent_hash, renderedCast.parent_fid)
+			? await getCastFromHash(
+					renderedCast.parent_hash,
+					renderedCast.parent_fid,
+					ctx,
+				)
 			: undefined;
 	if (!parentCast && renderedCast.parent_hash) {
-		await drainMissingCasts(5);
+		await drainMissingCasts(5, ctx);
 		parentCast =
 			renderedCast.parent_fid && renderedCast.parent_hash
-				? getCastFromHash(renderedCast.parent_hash, renderedCast.parent_fid)
+				? await getCastFromHash(
+						renderedCast.parent_hash,
+						renderedCast.parent_fid,
+						ctx,
+					)
 				: undefined;
 	}
 	const parentUser = renderedCast.parent_fid
-		? await getUserFromFid(renderedCast.parent_fid)
+		? await getUserFromFid(renderedCast.parent_fid, ctx)
 		: undefined;
 
 	const parentCastPath =
@@ -77,6 +96,7 @@ export const renderReplyHeader = async (cast: Cast): Promise<string> => {
 			? await castArchiveRelativePath(
 					renderedCast.parent_hash,
 					renderedCast.parent_fid,
+					ctx,
 				)
 			: undefined;
 
@@ -235,19 +255,25 @@ const quotePreviewText = (text: string | undefined): string => {
 	return `${singleLine.slice(0, QUOTE_PREVIEW_LENGTH)}…`;
 };
 
-const farcasterQuoteUrl = (hash: string, username: string): string => {
+// External permalink for quotes outside the archive — forkcaster.xyz mirrors
+// cast URLs (short or full hash) without needing the Farcaster app.
+const externalQuoteUrl = (hash: string, username: string): string => {
 	const h = normalizeHash(hash);
-	return `https://farcaster.xyz/${username}/${h}`;
+	return `https://forkcaster.xyz/${username}/${h}`;
 };
 
-const renderQuoteEmbed = async (embed: Embed): Promise<string> => {
+const renderQuoteEmbed = async (
+	embed: Embed,
+	ctx: RunContext = defaultRunContext(),
+): Promise<string> => {
 	const ref = getCastEmbedRef(embed);
 	if (!ref) return renderUnknownEmbed(embed);
 
-	const quotedCast = ref.inlineCast ?? getCastFromHash(ref.hash, ref.fid);
-	const user = await getUserFromFid(ref.fid);
+	const quotedCast =
+		ref.inlineCast ?? (await getCastFromHash(ref.hash, ref.fid, ctx));
+	const user = await getUserFromFid(ref.fid, ctx);
 	const username = user.username ?? `fid:${ref.fid}`;
-	const archivePath = await castArchiveRelativePath(ref.hash, ref.fid);
+	const archivePath = await castArchiveRelativePath(ref.hash, ref.fid, ctx);
 
 	if (archivePath && archivePath !== "<deleted>") {
 		const preview = quotePreviewText(quotedCast?.text);
@@ -256,7 +282,7 @@ const renderQuoteEmbed = async (embed: Embed): Promise<string> => {
 
 	const hashPrefix = normalizeHash(ref.hash).slice(0, 10);
 	const linkLabel = `${hashPrefix}…`;
-	const externalUrl = farcasterQuoteUrl(ref.hash, username);
+	const externalUrl = externalQuoteUrl(ref.hash, username);
 
 	if (archivePath === "<deleted>" || !quotedCast) {
 		const preview =
@@ -276,9 +302,12 @@ const renderUnknownEmbed = (embed: Embed): string => {
 	return `{unknown embed: ${truncated}}`;
 };
 
-const renderEmbed = async (embed: Embed): Promise<string> => {
+const renderEmbed = async (
+	embed: Embed,
+	ctx: RunContext = defaultRunContext(),
+): Promise<string> => {
 	if (getCastEmbedRef(embed)) {
-		return renderQuoteEmbed(embed);
+		return renderQuoteEmbed(embed, ctx);
 	}
 	if (isEmbedUrl(embed)) {
 		return renderUrlEmbed(embed);
@@ -286,9 +315,14 @@ const renderEmbed = async (embed: Embed): Promise<string> => {
 	return renderUnknownEmbed(embed);
 };
 
-export const renderEmbedsAsync = async (embeds: Embed[]): Promise<string> => {
+export const renderEmbedsAsync = async (
+	embeds: Embed[],
+	ctx: RunContext = defaultRunContext(),
+): Promise<string> => {
 	if (!embeds.length) return "";
-	const lines = await Promise.all(embeds.map((embed) => renderEmbed(embed)));
+	const lines = await Promise.all(
+		embeds.map((embed) => renderEmbed(embed, ctx)),
+	);
 	return lines.filter((line) => line.trim().length > 0).join("\n\n");
 };
 

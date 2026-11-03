@@ -1,7 +1,6 @@
-import type { SQLQueryBindings } from "bun:sqlite";
 import fs from "node:fs";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
-import { getDb } from "../lib/db";
+import { defaultRunContext, type RunContext } from "../ctx";
 import { hash2filename, normalizeHash, pluralize } from "../lib/helpers";
 import {
 	embedsMissingFromFile,
@@ -13,7 +12,6 @@ import {
 } from "../lib/markdown";
 import { getUserFromShim } from "../lib/shim";
 import {
-	countReplies,
 	getUserFromFid,
 	hydrateQuotedCastEmbeds,
 	hydrateReferencedParents,
@@ -29,12 +27,13 @@ const isPlaceholderUsername = (username: string | null | undefined): boolean =>
 
 const resolveMentionUsername = async (
 	profile: Cast["mentioned_profiles"][number],
+	ctx: RunContext,
 ): Promise<string> => {
 	const hint = profile.username?.trim();
 	if (hint && !isPlaceholderUsername(hint)) return hint;
 
 	try {
-		const user = await getUserFromFid(profile.fid);
+		const user = await getUserFromFid(profile.fid, ctx);
 		if (user.username && !isPlaceholderUsername(user.username)) {
 			return user.username;
 		}
@@ -61,6 +60,7 @@ const applyProfileMentions = async (
 	text: string,
 	profiles: Cast["mentioned_profiles"],
 	ranges: Cast["mentioned_profiles_ranges"],
+	ctx: RunContext,
 ): Promise<string> => {
 	if (!profiles?.length || !ranges?.length) return text;
 
@@ -84,7 +84,7 @@ const applyProfileMentions = async (
 					({ profile }) => profile.fid === fid,
 				)?.profile;
 				if (!profile) return;
-				usernameByFid.set(fid, await resolveMentionUsername(profile));
+				usernameByFid.set(fid, await resolveMentionUsername(profile, ctx));
 			},
 		),
 	);
@@ -100,12 +100,13 @@ const applyProfileMentions = async (
 	return result;
 };
 
-export const renderCast = async (cast: Cast) => {
+export const renderCast = async (cast: Cast, ctx?: RunContext) => {
 	// mentions: ranges[i] marks where mentioned_profiles[i] appears in text
 	const textWithMentions = await applyProfileMentions(
 		cast.text,
 		cast.mentioned_profiles,
 		cast.mentioned_profiles_ranges,
+		ctx ?? defaultRunContext(),
 	);
 
 	return {
@@ -125,19 +126,20 @@ export const renderCast = async (cast: Cast) => {
 	};
 };
 
-export const fidsLoop = async (outDir: string = OUT_DIR) => {
+export const fidsLoop = async (
+	outDir: string = OUT_DIR,
+	ctx: RunContext = defaultRunContext(),
+) => {
 	const usersDir = `${outDir}/_users_`;
 	if (!fs.existsSync(usersDir)) {
 		fs.mkdirSync(usersDir, { recursive: true });
 	}
 
-	const fids = getDb().query("SELECT fid FROM users").all() as {
-		fid: number;
-	}[];
+	const fids = await ctx.data.listUserFids();
 	console.log(pluralize(fids.length, "fid"));
 
 	for (const fid of fids) {
-		const user = await getUserFromFid(fid.fid);
+		const user = await getUserFromFid(fid, ctx);
 		if (!user) {
 			continue;
 		}
@@ -147,12 +149,8 @@ export const fidsLoop = async (outDir: string = OUT_DIR) => {
 		}
 
 		console.log("writing user to", userPath);
-		fs.writeFileSync(userPath, await renderUserHeader(fid.fid));
-		const userCastHashes = (
-			getDb().query("SELECT hash FROM casts WHERE fid = ?").all(user.fid) as {
-				hash: string;
-			}[]
-		).map((h) => h.hash);
+		fs.writeFileSync(userPath, await renderUserHeader(fid, ctx));
+		const userCastHashes = await ctx.data.listCastHashesByFid(user.fid);
 		fs.appendFileSync(
 			userPath,
 			`\n---\n${userCastHashes.map((h) => h.replace(/^0x/, "")).join("\n")}`,
@@ -160,73 +158,53 @@ export const fidsLoop = async (outDir: string = OUT_DIR) => {
 	}
 };
 
-export const castsLoop = async (outDir: string = OUT_DIR) => {
-	const total = (
-		getDb().query("SELECT count(1) as n FROM casts").get() as { n: number }
-	).n;
-	console.log(pluralize(total, "cast"));
+export const castsLoop = async (
+	outDir: string = OUT_DIR,
+	ctx: RunContext = defaultRunContext(),
+) => {
+	const casts = await ctx.data.listCasts();
+	console.log(pluralize(casts.length, "cast"));
 
-	const PAGE_SIZE = 500;
-	let cursor: string | undefined;
-	for (;;) {
-		const params: SQLQueryBindings[] = [];
-		let sql = "SELECT hash, fid, data FROM casts";
-		if (cursor !== undefined) {
-			sql += " WHERE hash > ?";
-			params.push(cursor);
+	for (const { fid, hash } of casts) {
+		// Tombstoned casts are never rendered or rewritten — their archived
+		// files stay untouched, and re-rendering after a purge is self-heal's job.
+		if (await isCastDeleted(hash, ctx)) continue;
+		const user = await getUserFromFid(fid, ctx);
+		if (!user) {
+			continue;
 		}
-		sql += " ORDER BY hash LIMIT ?";
-		params.push(PAGE_SIZE);
-		const rows = getDb()
-			.query(sql)
-			.all(...params) as {
-			hash: string;
-			fid: number;
-			data: string;
-		}[];
-		if (rows.length === 0) break;
+		const hydratedCast = await getCastOrLog(hash, fid, ctx);
+		if (!hydratedCast) continue;
+		// create /out/user.username subdirectory if it doesn't exist yet
+		const userSubdir = `${outDir}/${user.username}`;
+		if (!fs.existsSync(userSubdir)) {
+			fs.mkdirSync(userSubdir, { recursive: true });
+		}
 
-		for (const { fid, hash, data } of rows) {
-			cursor = hash;
-			const user = await getUserFromFid(fid);
-			if (!user) {
+		const castPath = `${userSubdir}/${hash2filename(hash, hydratedCast.timestamp)}`;
+		const embedBlock = await renderEmbedsAsync(hydratedCast.embeds ?? []);
+		if (fs.existsSync(castPath)) {
+			const existing = fs.readFileSync(castPath, "utf8");
+			const needsRewrite =
+				existing.includes("<deleted>") ||
+				embedsMissingFromFile(existing, hydratedCast.embeds ?? [], embedBlock);
+			if (!needsRewrite) continue;
+			if (
+				hydratedCast.parent_hash &&
+				(await isCastDeleted(hydratedCast.parent_hash, ctx))
+			) {
 				continue;
 			}
-			const hydratedCast = JSON.parse(data) as Cast;
-			// create /out/user.username subdirectory if it doesn't exist yet
-			const userSubdir = `${outDir}/${user.username}`;
-			if (!fs.existsSync(userSubdir)) {
-				fs.mkdirSync(userSubdir, { recursive: true });
-			}
+		}
+		console.log("writing cast to", castPath);
+		const renderedCast = await renderCast(hydratedCast, ctx);
+		const replyCount = await ctx.data.countReplies(fid, hash);
 
-			const castPath = `${userSubdir}/${hash2filename(hash, hydratedCast.timestamp)}`;
-			const embedBlock = await renderEmbedsAsync(hydratedCast.embeds ?? []);
-			if (fs.existsSync(castPath)) {
-				const existing = fs.readFileSync(castPath, "utf8");
-				const needsRewrite =
-					existing.includes("<deleted>") ||
-					embedsMissingFromFile(
-						existing,
-						hydratedCast.embeds ?? [],
-						embedBlock,
-					);
-				if (!needsRewrite) continue;
-				if (
-					hydratedCast.parent_hash &&
-					isCastDeleted(hydratedCast.parent_hash)
-				) {
-					continue;
-				}
-			}
-			console.log("writing cast to", castPath);
-			const renderedCast = await renderCast(hydratedCast);
-			const replyCount = countReplies(fid, hash);
-
-			// write
-			fs.writeFileSync(
-				castPath,
-				`
-${renderedCast.parent_hash ? await renderReplyHeader(hydratedCast) : await renderTopLevelHeader(hydratedCast)}
+		// write
+		fs.writeFileSync(
+			castPath,
+			`
+${renderedCast.parent_hash ? await renderReplyHeader(hydratedCast, ctx) : await renderTopLevelHeader(hydratedCast, ctx)}
 --
 ${renderedCast.text}${embedBlock ? `\n\n${embedBlock}` : ""}
 ${renderReplyFooter(replyCount)}
@@ -234,18 +212,32 @@ ${renderReplyFooter(replyCount)}
 ${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />` : "{no channel}"}
 
 `.trim(),
-			);
-		}
-		if (rows.length < PAGE_SIZE) break;
+		);
 	}
 };
 
-export const writeLoop = async (outDir: string = OUT_DIR) => {
-	await fidsLoop(outDir);
+const getCastOrLog = async (
+	hash: string,
+	fid: number,
+	ctx: RunContext,
+): Promise<Cast | undefined> => {
+	const data = await ctx.data.getCastData(hash, fid);
+	if (data === undefined) {
+		console.error(`Cast with hash ${hash} [${fid}] not found in database`);
+		return undefined;
+	}
+	return JSON.parse(data) as Cast;
+};
+
+export const writeLoop = async (
+	outDir: string = OUT_DIR,
+	ctx: RunContext = defaultRunContext(),
+) => {
+	await fidsLoop(outDir, ctx);
 	// Ensure all referenced parent casts exist before writing files.
-	await hydrateReferencedParents(5);
-	await hydrateQuotedCastEmbeds(5);
-	await castsLoop(outDir);
+	await hydrateReferencedParents(5, ctx);
+	await hydrateQuotedCastEmbeds(5, ctx);
+	await castsLoop(outDir, ctx);
 	// One more pass to write user files discovered during cast hydration/writes.
-	await fidsLoop(outDir);
+	await fidsLoop(outDir, ctx);
 };

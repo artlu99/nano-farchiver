@@ -1,0 +1,26 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180931867,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 429,
+				"hash": "0x69e8f18f829ed02988379da0e9a49cacdeabcc3d"
+			},
+			"parentUrl": null,
+			"text": "fair! N.B. every season of The Wire is different (I enjoyed them all), almost like different tv shows",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x722b688910eab5f9bfdd52d3810710a1724b61fa",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "Q4Mo0PO2QSBJ9t1fCls762kiPzT2XNTC5xJnkzeLqEf8yIJ+/7LDSkRzeb9XH80mvZQOv7SRIB3LEK2sNBKGBw==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0xb776826db247f05b7653f43ad136a1e5a772463739455c33b79b94fad8e554c2"
+}

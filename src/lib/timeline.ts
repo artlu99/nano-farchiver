@@ -250,7 +250,7 @@ WHERE c.hash IN (${placeholders})`,
 				const textSnip = escapeHtml(snippetFromCast(cast, preview_length));
 
 				body += `<article class="cast-row">`;
-				body += `<div class="cast-meta"><a href="${escapeHtml(href)}">@${escapeHtml(username)}</a> · <code><a href="https://farcaster.xyz/${escapeHtml(username)}/${escapeHtml(r.hash).slice(0, 10)}" target="_blank" rel="noopener noreferrer">${escapeHtml(normalizeHash(r.hash).slice(0, 10))}</a></code></div>`;
+				body += `<div class="cast-meta"><a href="${escapeHtml(href)}">@${escapeHtml(username)}</a> · <code><a href="https://forkcaster.xyz/${escapeHtml(username)}/${escapeHtml(normalizeHash(r.hash)).slice(0, 10)}" target="_blank" rel="noopener noreferrer">${escapeHtml(normalizeHash(r.hash).slice(0, 10))}</a></code></div>`;
 				body += `<div class="cast-snippet">${textSnip}</div>`;
 
 				if (r.parent_hash) {

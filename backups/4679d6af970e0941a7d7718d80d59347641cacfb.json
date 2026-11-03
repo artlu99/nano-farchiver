@@ -1,0 +1,26 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180977363,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 13505,
+				"hash": "0x533532fc09b30dfef4c83e18d3ee0c6294f841c9"
+			},
+			"parentUrl": null,
+			"text": "sport is beautiful in that ability speaks for itself\n\nand if you let considerations like race, skin color, education, or social class impact your decisions\n\nyou end up like Italy",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x4679d6af970e0941a7d7718d80d59347641cacfb",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "rnkrWYPEN1SMhmBa2PH6fZ/KfsJDTN3tSUYrZ4/FARMLuGZlYDM8ZNGA2MEu1oCv76zoqwGbR0nQKxdop2uVAg==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0xb776826db247f05b7653f43ad136a1e5a772463739455c33b79b94fad8e554c2"
+}

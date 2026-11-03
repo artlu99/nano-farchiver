@@ -1,0 +1,27 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181578685,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "\"Spam dies at the door.\"\n\n- **Mentions** — when someone stubs your work, their client can notify yours (using the standard Webmention mechanism), and the claim is verifiable: the published files either quote you or they don't. Spam dies at the door.\n\nhttps://blygger.org/",
+			"embeds": [
+				{
+					"url": "https://blygger.org/"
+				}
+			],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0xe346b6c2f2bbadf8c2d137508b03b43e50949392",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "h/j/vd12k6Zp88wWYS4RVUyO8f/TsPfa3RfHfuekqOlN4j5/k+vlnRC7v2yMifY4mArttI+8sOvq0Yt3xv00Dg==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0xb776826db247f05b7653f43ad136a1e5a772463739455c33b79b94fad8e554c2"
+}

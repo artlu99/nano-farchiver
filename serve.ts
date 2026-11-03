@@ -1,6 +1,7 @@
 import { statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import reactIndex from "./react/index.html";
+import reviewIndex from "./react/review.html";
 import legacy from "./server";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -21,6 +22,8 @@ Bun.serve({
 	routes: {
 		"/react": reactIndex,
 		"/react/": reactIndex,
+		"/review": reviewIndex,
+		"/review/": reviewIndex,
 	},
 	async fetch(req) {
 		const { pathname } = new URL(req.url);

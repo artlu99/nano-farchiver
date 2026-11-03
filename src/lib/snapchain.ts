@@ -15,6 +15,188 @@ const api = fetcher({
 	headers: { Accept: "application/json" },
 });
 
+// ---------------------------------------------------------------------------
+// Purge-related endpoints. The gateway returns protobuf messages as plain JSON:
+// `data` is a decoded object, `hash`/`signer` are 0x-hex strings, `signature`
+// is base64, and schemes are enum-name strings. TS proto types don't match at
+// runtime, so these fetchers use their own JSON shapes.
+// ---------------------------------------------------------------------------
+
+export interface SnapCastId {
+	fid: number;
+	hash: string;
+}
+
+export interface SnapMessageData {
+	type: string;
+	fid: number;
+	timestamp: number; // seconds since FARCASTER_EPOCH
+	network: string;
+	castAddBody?: {
+		text?: string;
+		parentCastId?: SnapCastId | null;
+		parentUrl?: string | null;
+		embeds?: ({ url?: string | null } | { castId?: SnapCastId | null })[];
+		mentions?: number[];
+		mentionsPositions?: number[];
+	};
+	reactionBody?: {
+		type: string; // "REACTION_TYPE_LIKE" | "REACTION_TYPE_RECAST"
+		targetCastId?: SnapCastId | null;
+		targetUrl?: string | null;
+	};
+}
+
+export interface SnapMessage {
+	data: SnapMessageData;
+	hash: string;
+	hashScheme: string;
+	signature: string;
+	signatureScheme: string;
+	signer: string;
+}
+
+export interface SnapSignerEvent {
+	type: string; // "EVENT_TYPE_SIGNER"
+	blockNumber: number;
+	signerEventBody: {
+		key: string;
+		keyType: number;
+		eventType: string; // "SIGNER_EVENT_TYPE_ADD" | "SIGNER_EVENT_TYPE_REMOVE"
+	};
+}
+
+const isEndPageToken = (token: string | undefined): boolean => {
+	if (!token) return true;
+	try {
+		return Buffer.from(token, "base64").toString("utf-8") === "[null,null]";
+	} catch {
+		return true;
+	}
+};
+
+const fetchAllSnapMessages = async (
+	path: string,
+	params: Record<string, string | number | boolean>,
+	maxMessages: number,
+): Promise<SnapMessage[]> => {
+	const all: SnapMessage[] = [];
+	let pageToken: string | undefined;
+	for (;;) {
+		const query: Record<string, string | number | boolean> = {
+			...params,
+			pageSize: PAGE_SIZE,
+		};
+		if (pageToken) query.pageToken = pageToken;
+		const res = await retry(
+			{ times: 5, backoff: (i) => Math.min(1000 * 2 ** i, 30000) },
+			() =>
+				api.get<{ messages?: SnapMessage[]; nextPageToken?: string }>(path, {
+					query,
+				}),
+		);
+		all.push(...(res.messages ?? []));
+		if (isEndPageToken(res.nextPageToken) || all.length >= maxMessages) {
+			return all.slice(0, maxMessages);
+		}
+		pageToken = res.nextPageToken;
+	}
+};
+
+export const snapCastsByFid = (
+	fid: number,
+	maxMessages = 50_000,
+): Promise<SnapMessage[]> =>
+	fetchAllSnapMessages("/castsByFid", { fid, reverse: true }, maxMessages);
+
+export const snapReactionsByFid = (
+	fid: number,
+	reactionType: "Like" | "Recast",
+	maxMessages = 200_000,
+): Promise<SnapMessage[]> =>
+	fetchAllSnapMessages(
+		"/reactionsByFid",
+		{ fid, reaction_type: reactionType },
+		maxMessages,
+	);
+
+export const snapCastById = async (
+	fid: number,
+	hash: string,
+): Promise<SnapMessage | null> => {
+	try {
+		return await api.get<SnapMessage>("/castById", { query: { fid, hash } });
+	} catch (error) {
+		if (error && typeof error === "object" && "status" in error) {
+			const status = (error as { status?: number }).status;
+			if (status === 404 || status === 400) return null;
+		}
+		throw error;
+	}
+};
+
+/** Does `fid` have a `reactionType` reaction on cast `targetHash`? Early-exits on hit. */
+export const snapHasReaction = async (
+	fid: number,
+	targetHash: string,
+	reactionType: "Like" | "Recast",
+): Promise<boolean> => {
+	const normalized = targetHash.startsWith("0x")
+		? targetHash
+		: `0x${targetHash}`;
+	let pageToken: string | undefined;
+	for (;;) {
+		const query: Record<string, string | number | boolean> = {
+			target_fid: fid,
+			target_hash: normalized,
+			reaction_type: reactionType,
+			pageSize: PAGE_SIZE,
+		};
+		if (pageToken) query.pageToken = pageToken;
+		const res = await retry(
+			{ times: 5, backoff: (i) => Math.min(1000 * 2 ** i, 30000) },
+			() =>
+				api.get<{ messages?: SnapMessage[]; nextPageToken?: string }>(
+					"/reactionsByTarget",
+					{ query },
+				),
+		);
+		for (const msg of res.messages ?? []) {
+			if (msg.data?.fid === fid) return true;
+		}
+		if (isEndPageToken(res.nextPageToken)) return false;
+		pageToken = res.nextPageToken;
+	}
+};
+
+export const snapOnChainSigners = async (
+	fid: number,
+): Promise<SnapSignerEvent[]> => {
+	const res = await retry(
+		{ times: 5, backoff: (i) => Math.min(1000 * 2 ** i, 30000) },
+		() =>
+			api.get<{ events?: SnapSignerEvent[] }>("/onChainSignersByFid", {
+				query: { fid, pageSize: 100 },
+			}),
+	);
+	return res.events ?? [];
+};
+
+export const snapSubmitMessage = async (
+	messageBytes: Uint8Array,
+): Promise<void> => {
+	const res = await fetch("https://snap.farcaster.xyz:3381/v1/submitMessage", {
+		method: "POST",
+		headers: { "Content-Type": "application/octet-stream" },
+		body: Buffer.from(messageBytes),
+	});
+	if (res.ok) return;
+	const detail = await res.text().catch(() => "");
+	throw new Error(
+		`submitMessage failed: HTTP ${res.status} ${detail.slice(0, 300)}`,
+	);
+};
+
 const getCastsByParent = async (fid: number, hash: string) => {
 	const allMessages: Message[] = [];
 	let pageToken: string | undefined;

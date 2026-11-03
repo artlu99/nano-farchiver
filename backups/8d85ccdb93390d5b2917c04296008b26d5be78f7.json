@@ -1,0 +1,23 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180915333,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "cursor has gotten so bloated and slow (on my very old dev laptop). zed is still fast, but does not feel like I'm getting all the latest benefits",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x8d85ccdb93390d5b2917c04296008b26d5be78f7",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "wf1Qux5s6yiaBxh4zBRqmx5aI4+cRVI3o4WwmK3vCXPJmMrFhB8IG9lWUpq9cFQJxjapah+DX7c9SlKb5jrtDA==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

@@ -13,6 +13,8 @@ const SCHEMA = [
 	"CREATE TABLE IF NOT EXISTS casts (hash TEXT PRIMARY KEY, fid INTEGER, data TEXT, parent_fid INTEGER, parent_hash TEXT)",
 	"CREATE TABLE IF NOT EXISTS deleted_casts (hash TEXT PRIMARY KEY, deleted_at INTEGER, reason TEXT)",
 	"CREATE TABLE IF NOT EXISTS cast_quotes (cast_hash TEXT, quoted_hash TEXT, PRIMARY KEY (cast_hash, quoted_hash))",
+	"CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)",
+	"CREATE TABLE IF NOT EXISTS self_reactions (target_hash TEXT, type TEXT NOT NULL DEFAULT 'like', updated_at INTEGER, PRIMARY KEY (target_hash, type))",
 	"CREATE INDEX IF NOT EXISTS idx_casts_parent ON casts(parent_hash, parent_fid)",
 ];
 

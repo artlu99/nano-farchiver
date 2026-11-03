@@ -1,0 +1,26 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180975401,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 13505,
+				"hash": "0xd16ffe9be52b35a7a8939a8bdc50a256fe85014a"
+			},
+			"parentUrl": null,
+			"text": "sorry mate, you're both right and wrong\n\nI'd say the two countries are about even in profile, and all your points are true facts\n\nbut your conclusion misses the impact of the massively greater amount of money in English football (often from oligarchs and sheikhs, not just native English supporters) than Portuguese football (quite often diluted with Brazilian interchange)",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "LONG_CAST"
+		}
+	},
+	"hash": "0xee87db1840996fe13d052b2404833845ef1fbb50",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "CGK109bzmnl6jJG/p6pU3f8OsxhYQIRmh2md1huhOF7qVFnnh0JEaEbcQcH0VRwHIMgsfhfhI6H1btzZ+oSlCg==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0xb776826db247f05b7653f43ad136a1e5a772463739455c33b79b94fad8e554c2"
+}

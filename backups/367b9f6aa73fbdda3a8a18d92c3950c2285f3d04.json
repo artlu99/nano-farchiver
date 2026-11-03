@@ -1,0 +1,27 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181705481,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "Flushing, Queens is an old place. But by the joys of immigrant energy, it continues to offer new delights.\n\nKing's Kitchen, at 40-12 Main St, offers delicious, modern dim sum and roast duck, just steps away from the subway exit.\n\nThe lines tend to be long and loud. With such high turnover, the food is always tasty and fresh.\n\nWe had a wonderful set breakfast at an uncrowded time. We sat next to a table of three middle-aged Chinese men in construction clothes, each with happy faces and their own cruller (油条) hanging from a small metal rack, to ensure the oil doesn't pool and turn the dough soggy.\n\nOne of them started hocking loudly at the table, maybe five times. The other guys paid no attention. He got up, walked to the corner station where clean utensils and dishes are stored, and continued hocking loud enough to echo throughout the room.\n\nI smiled from ear to ear. We must be in China.\n\nThe men left. The two small lady waiters chattered loudly, like sparrows chirping after the eagle has flown away.",
+			"embeds": [
+				{
+					"url": "https://artlu.bearblog.dev/old-and-new-kings-kitchen-restaurant-review/"
+				}
+			],
+			"mentionsPositions": [],
+			"type": "LONG_CAST"
+		}
+	},
+	"hash": "0x367b9f6aa73fbdda3a8a18d92c3950c2285f3d04",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "+QcSwx0ZFKZoXNNCa3Sw0aJY19wGwPiDP1yyb/8vdtCbR3oLBuPskLWF8zwUwyp7+MpE10Lz6IwyJc5EBuDnAw==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

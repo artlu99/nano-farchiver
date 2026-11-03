@@ -1,0 +1,26 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180975875,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 4698,
+				"hash": "0xc370e14732ae5d0cc8a30577bd8fb168f7fd3aa1"
+			},
+			"parentUrl": null,
+			"text": "ok, let me try answering more directly now\n\nI think TUIs and CLI-based interfaces are a cul-de-sac of the exploratory energy, and will generally be replaced with things that work better for most people\n\nlike, maybe, Grok Bot. or Devin. or Cursor. or Warp. or exe's Shelley. or Slack/Discord with a new window view into artifacts. or wherever Superlogical goes\n\nso I want to underinvest in making my cul-de-sac any more pleasant, and invest in things that feel more like the future?\n\nbtw in that KotH clip, Boomhauer expresses how natural it is to click around and get outsized rewards",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "LONG_CAST"
+		}
+	},
+	"hash": "0xaf1735a3482201a90519cc87794ad49440590739",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "pBFYLR3g6WBSZjDT1nr8fBTmMiaFrQB8xtJqqRD3Zeg5pFmRpg/mduzyg1n6+Vq9+pKXf8Is7mFzVYFcrUSXCQ==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0xb776826db247f05b7653f43ad136a1e5a772463739455c33b79b94fad8e554c2"
+}

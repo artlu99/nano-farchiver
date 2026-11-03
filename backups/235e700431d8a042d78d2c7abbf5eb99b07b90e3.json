@@ -1,0 +1,30 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181843340,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "one mental model: \n\nrobot vacuums don't clean as well as a focused human, \n\nbut they do better than a tired or distracted human.\n\nthey spend more time cleaning, with slightly worse results\n\nbut they free humans to do things other than cleaning\n\nSAME THING WITH DISHWASHERS\n\nmaybe coding agents *should* work the same way--\n\nproduce some mediocre output\n\nwhich **was always good enough**\n\nbut for the human need to carve out professionalism\n\nand distinguish exceptional quality\n\nwhich allows individuals to stake their right to some reward\n\ntaken from a finite resource\n\nor allocation of a fixed budget\n\nin a world of scarcity, good enough is not good enough\n\nbut in a world of abundance, is good enough good enough?\n\nlike in Hawaii nobody ever worries about dressing for the weather\n\nslippahs are good enough\n\nbut in New York, you need 5 different pairs of shoes",
+			"embeds": [
+				{
+					"castId": {
+						"fid": 3319217,
+						"hash": "0x9d30ad2c90a50dd96b2ed3a77a989e685c0c7f55"
+					}
+				}
+			],
+			"mentionsPositions": [],
+			"type": "LONG_CAST"
+		}
+	},
+	"hash": "0x235e700431d8a042d78d2c7abbf5eb99b07b90e3",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "ji3rmocvG5bYHYRjNE+8id4rjUI3wW5sW1bsXMndQ3vI4v4qwbEWu5iFLcrBdeUuGzrdk1l0DO9+GG/fq0QBAg==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

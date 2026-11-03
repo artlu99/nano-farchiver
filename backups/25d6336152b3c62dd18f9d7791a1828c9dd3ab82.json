@@ -1,0 +1,26 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180974827,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 214447,
+				"hash": "0x5ba7155618c6048138282cbdc4dd8cf35957d652"
+			},
+			"parentUrl": null,
+			"text": "nits are nits and twits are twits\n\npick your bone to pick\n\nyou're either a bonehead\n\nor qualified to speak on behalf of the community\n\nChào bạn! rất vui được làm quen với bạn... ĐM nhà mày.",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x25d6336152b3c62dd18f9d7791a1828c9dd3ab82",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "rr7AHpSy1wfGoffHcP/Rw/Cs6+OsLPpeXW7uzh1uHdneRdXxq34hgTKrzZZvsmT8JBsY4/eaOwjzOPCiyyjwAg==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0xb776826db247f05b7653f43ad136a1e5a772463739455c33b79b94fad8e554c2"
+}

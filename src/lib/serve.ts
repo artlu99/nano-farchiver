@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, posix, resolve, sep } from "node:path";
 import { marked } from "marked";
 import invariant from "tiny-invariant";
+import { archiveStats, statsHtml } from "./stats";
 
 const OUT_DIR = resolve("out");
 
@@ -60,6 +61,16 @@ ul.entries li{padding:.25rem 0}
 .preview-text{margin:0;font-size:1.1rem}
 .pay-link{display:inline-block;margin-top:1rem;padding:.5rem 1rem;background:var(--btn-bg);color:var(--btn-fg);text-decoration:none;border-radius:4px}
 .pay-link:hover{background:var(--btn-hover);text-decoration:none}
+.glance{margin-bottom:1.5rem}
+.glance-note{color:var(--muted);font-size:.9rem}
+.stat-row{display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem}
+.stat-tile{background:var(--surface);border-radius:4px;padding:.6rem 1rem;min-width:7rem}
+.stat-value{font-weight:600;font-size:1.15rem}
+.stat-label{color:var(--muted);font-size:.8rem}
+.hist-row{display:flex;align-items:flex-end;gap:2px;height:5rem;background:var(--surface);padding:.75rem;border-radius:4px}
+.hist-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;flex:1;height:100%}
+.hist-bar{width:100%;background:var(--accent-border);border-radius:1px 1px 0 0}
+.hist-label{font-size:.55rem;color:var(--muted);margin-top:.25rem}
 </style>
 </head>
 <body>
@@ -107,6 +118,13 @@ function serveDirectory(
 
 	const title = titleText || relativePath || "out";
 	let html = breadcrumb(relativePath);
+	if (relativePath === "") {
+		try {
+			html += statsHtml(archiveStats());
+		} catch {
+			// glance is best-effort — never break the listing
+		}
+	}
 	html += `<h1>${basename(dirPath)}</h1>`;
 	html += `<p>${entries.length} ${entries.length === 1 ? "entry" : "entries"}</p>`;
 	html += `<ul class="entries">`;

@@ -1,10 +1,12 @@
 import { drainMissingCasts, queueLoop } from "./jobs/read";
 import { writeLoop } from "./jobs/write";
+import { selfHealFromBackups } from "./lib/backup";
+import { ARCHIVER_FID } from "./lib/config";
 import { pluralize } from "./lib/helpers";
 import { getCronFeed, getReplies } from "./lib/neynar";
 import { resetTimers, timeAsync, timerReport } from "./lib/timers";
 
-const FID = 3319217;
+const FID = ARCHIVER_FID;
 const FULL_CONVERSATIONS_MODE = true;
 
 export const doIt = async (fid: number) => {
@@ -21,6 +23,7 @@ export const doIt = async (fid: number) => {
 		);
 		// Drain any queued missing-cast lookups. Bounded to avoid runaway.
 		await drainMissingCasts(5);
+		await timeAsync("selfHeal", () => selfHealFromBackups());
 		await timeAsync("writeLoop", () => writeLoop());
 		console.log(`\ntimers:\n${timerReport()}`);
 	} catch (error) {

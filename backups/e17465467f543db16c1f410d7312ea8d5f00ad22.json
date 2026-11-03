@@ -1,0 +1,23 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181102927,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "most of the tl suggests using jev-like model, or harness-level intelligence, to route requests to appropriate models\n\nOpenRouter's raison d'etre is based on this paradigm\n\nsome ppl (theo, kun chen) push back, pointing out that request-level routing is likely to be inefficient\n\nit's all v confusing\n\nmy solution is self-contained agents in prod:\n- each gets its own personality and skills set\n- each runs in its own container\n- hard-coded set of models\n- balanced for cost, performance, and privacy\n\nmy workhorses are \n- Cursor / Grok on a coding sub\n- Zhipu glm-5.3-flash on a coding sub\n- Venice glm-4.7-flash at $0.06/M input, 0.40/M output\n\nNever send sensitive info to a frontier model, only to a trailing open-weights model\n\nOK to do research with a creepy frontier model, but don't try creating unless it's expected to be slop\n\nWhat this all gets me: never wait, never run out of tokens, sleep ok knowing my personal data never goes into the soup",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "LONG_CAST"
+		}
+	},
+	"hash": "0xe17465467f543db16c1f410d7312ea8d5f00ad22",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "AZbHXq9QCEJh4LgJU/zeAHo+3THX8bunYObigM/hydIsNpXVo1BrIiFVJwV3OuESlt9WQRKbAA22PAVQO4IWDQ==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

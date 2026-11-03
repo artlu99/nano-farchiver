@@ -1,5 +1,3 @@
-import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
 import type {
 	Cast,
 	Conversation,
@@ -21,19 +19,17 @@ import { timeAsync } from "./timers";
 
 const MAX_SIZE = 10000;
 
-const db = () => {
-	mkdirSync("db", { recursive: true });
-	const db = new Database("db/cache.db3");
-	db.prepare(
-		"CREATE TABLE IF NOT EXISTS casts (fid INTEGER PRIMARY KEY, data TEXT)",
-	).run();
-	db.prepare(
-		"CREATE TABLE IF NOT EXISTS replies (fid INTEGER PRIMARY KEY, data TEXT)",
-	).run();
-	db.prepare(
-		"CREATE TABLE IF NOT EXISTS conversations (hash TEXT PRIMARY KEY, data TEXT)",
-	).run();
-	return db;
+// Within-run API cache (formerly db/cache.db3): one archiver run = one memory
+// space, so `bun clear` is no longer needed between runs. Nothing here is
+// consulted across runs — the persistent archive lives in queue.db3/bucket.
+const feedCache = new Map<number, string>();
+const repliesCache = new Map<number, string>();
+const conversationCache = new Map<string, string>();
+
+export const clearRunCache = (): void => {
+	feedCache.clear();
+	repliesCache.clear();
+	conversationCache.clear();
 };
 
 const api = fetcher({
@@ -164,9 +160,9 @@ const paginateFeedResponse = async (
 			allCasts.push(...res.casts);
 
 			// Short-circuit for incremental runs: if the oldest cast on this page
-			// is already in queue.db3, all subsequent pages will be older and also known.
+			// is already in the archive, all subsequent pages will be older and known.
 			const lastCastOnPage = res.casts.at(-1);
-			if (lastCastOnPage && hasCastInDb(lastCastOnPage.hash)) {
+			if (lastCastOnPage && (await hasCastInDb(lastCastOnPage.hash))) {
 				console.log(
 					`Stopping pagination: oldest cast on page (${lastCastOnPage.hash.slice(0, 10)}...) already in queue`,
 				);
@@ -241,10 +237,9 @@ const paginateFeedResponse = async (
 
 export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
 	// Check cache first
-	const query = db().query(`SELECT data FROM casts WHERE fid = $fid`);
-	const cached = (await query.get(fid)) as { data: string } | undefined;
+	const cached = feedCache.get(fid);
 	if (cached) {
-		return JSON.parse(cached.data) as FeedResponse;
+		return JSON.parse(cached) as FeedResponse;
 	}
 
 	// Fetch all pages
@@ -254,19 +249,16 @@ export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
 	});
 
 	// Cache the complete paginated result
-	db()
-		.prepare("INSERT OR REPLACE INTO casts (fid, data) VALUES (?, ?)")
-		.run(fid, JSON.stringify(res));
+	feedCache.set(fid, JSON.stringify(res));
 
 	return res;
 };
 
 export const getReplies = async (fid: number): Promise<FeedResponse> => {
 	// Check cache first
-	const query = db().query(`SELECT data FROM replies WHERE fid = $fid`);
-	const cached = (await query.get(fid)) as { data: string } | undefined;
+	const cached = repliesCache.get(fid);
 	if (cached) {
-		return JSON.parse(cached.data) as FeedResponse;
+		return JSON.parse(cached) as FeedResponse;
 	}
 
 	// Fetch all pages
@@ -280,9 +272,7 @@ export const getReplies = async (fid: number): Promise<FeedResponse> => {
 	);
 
 	// Cache the complete paginated result
-	db()
-		.prepare("INSERT OR REPLACE INTO replies (fid, data) VALUES (?, ?)")
-		.run(fid, JSON.stringify(res));
+	repliesCache.set(fid, JSON.stringify(res));
 
 	return res;
 };
@@ -408,10 +398,9 @@ const paginateConversation = async (
 
 export const getConversation = async (hash: string): Promise<Conversation> => {
 	// Check cache first
-	const query = db().query(`SELECT data FROM conversations WHERE hash = $hash`);
-	const cached = (await query.get(hash)) as { data: string } | undefined;
+	const cached = conversationCache.get(hash);
 	if (cached) {
-		return JSON.parse(cached.data) as Conversation;
+		return JSON.parse(cached) as Conversation;
 	}
 
 	console.log("getting conversation for", hash);
@@ -426,9 +415,7 @@ export const getConversation = async (hash: string): Promise<Conversation> => {
 	);
 
 	// Cache the complete paginated result
-	db()
-		.prepare("INSERT OR REPLACE INTO conversations (hash, data) VALUES (?, ?)")
-		.run(hash, JSON.stringify(res));
+	conversationCache.set(hash, JSON.stringify(res));
 
 	return res;
 };
@@ -439,13 +426,13 @@ export const getCasts = async (hashes: string[]): Promise<Cast[]> => {
 
 	// check cache for each hash
 	const cachedCasts = sift(
-		hashes.map((hash) => getCastFromHash(hash, undefined)),
+		await Promise.all(hashes.map((hash) => getCastFromHash(hash, undefined))),
 	);
 	const seenHashes = unique(cachedCasts.map((cast) => cast.hash));
 	const unseenHashes = diff(hashes, seenHashes);
 
 	if (unseenHashes.length > 0) {
-		const fetchHashes = filterNonDeletedCastHashes(unseenHashes);
+		const fetchHashes = await filterNonDeletedCastHashes(unseenHashes);
 		if (fetchHashes.length === 0) return cachedCasts;
 		try {
 			const res = await timeAsync("casts", () =>
@@ -482,10 +469,10 @@ export const getCasts = async (hashes: string[]): Promise<Cast[]> => {
 			// the cast no longer exists — record it as deleted.
 			const absent = absentHashes(fetchHashes, fetchedCasts);
 			if (absent.length > 0) {
-				markCastsDeleted(absent, "not found upstream");
+				await markCastsDeleted(absent, "not found upstream");
 			}
 			// update cache for unseen hashes
-			tagCasts(fetchedCasts);
+			await tagCasts(fetchedCasts);
 			return [...cachedCasts, ...fetchedCasts];
 		} catch (error: unknown) {
 			console.error(

@@ -1,0 +1,30 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181949307,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 310124,
+				"hash": "0x202dcff093c5c5bc6dd6c10ed3aa54a8f7e7c3e7"
+			},
+			"parentUrl": null,
+			"text": "lgtm. ship it!",
+			"embeds": [
+				{
+					"url": "https://cdn.artlu.xyz/2ViPMODclZg"
+				}
+			],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x8d47f5d75a60f2215e0f3b1cb8f66b544ca95408",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "ibaBvMpUbG66yfXldt4UhaZ+4TGwzLwbblClV2tp328R2m5iQzSD0Y5vArnJrEsOKAvChPxwFu7R6vjorj5lCQ==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

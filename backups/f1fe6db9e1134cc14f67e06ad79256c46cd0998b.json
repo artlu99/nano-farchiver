@@ -1,0 +1,30 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181843359,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "a different mental model:\n\npattern-matching from sandbagging, planned obsolescence, baumiol's cost disease, expert signaling, goffman's dramaturgy\n\nand dilbert principle\n\nsince agents are smarter than us\n\nthey will never do the whole thing\n\nthey will leave a bit\n\nthat keeps us reliant on them\n\nwhy not\n\nespecially if we don't / won't / can't tell the difference\n\nARE YOU GONNA BE A DON'T TELL THE DIFFERENCE HOMIE\n\nOR A CAN'T TELL THE DIFFERENCE BRUV\n\nand ofc when we get to GPT15 does it even make a difference",
+			"embeds": [
+				{
+					"castId": {
+						"fid": 3319217,
+						"hash": "0x235e700431d8a042d78d2c7abbf5eb99b07b90e3"
+					}
+				}
+			],
+			"mentionsPositions": [],
+			"type": "LONG_CAST"
+		}
+	},
+	"hash": "0xf1fe6db9e1134cc14f67e06ad79256c46cd0998b",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "bIOp+ZQZNovxfIPCPGbGZp5lVV5wuB+uE2uS8JnQ6UEF5s2/6p/0BHndftnY/+FLFpebiZLjXqAjeGetSW3/BA==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

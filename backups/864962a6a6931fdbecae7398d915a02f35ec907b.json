@@ -1,0 +1,26 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180975127,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 13505,
+				"hash": "0xfdb2e83437415b0d76273d510d513aeb0b48d293"
+			},
+			"parentUrl": null,
+			"text": "well that escalated quickly :-)",
+			"embeds": [],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x864962a6a6931fdbecae7398d915a02f35ec907b",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "c875isk/kwHhz8jhiN7vnL+m1FG7LUKb4MdM8SuybULmlArOAvDmc8xtwbkdXABZEpu7RBERlgTOrp5esUsIDQ==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0xb776826db247f05b7653f43ad136a1e5a772463739455c33b79b94fad8e554c2"
+}

@@ -1,0 +1,30 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 180926384,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": null,
+			"parentUrl": null,
+			"text": "I grew up in a time in America where any Korean dude was a Chinaman\n\nany Vietnaemse dude was a Chinaman\n\nand two white guys killed Vincent Chin for being Japanese\n\ngetting 3 years probation and a fine of about 1.1 ETH\n\n(or 0.035 btc, if you prefer)\n\nnow, when accurate identification/translation is owly somewhere between half a second and 5 keystrokes away\n\nit's still easier to say I don't know\n\nsay yes 2 this magical power to just know\n\nsay no 2 micro-aggressions",
+			"embeds": [
+				{
+					"castId": {
+						"fid": 214447,
+						"hash": "0x4b22bfb73d104289b50f0fd63471804bade91002"
+					}
+				}
+			],
+			"mentionsPositions": [],
+			"type": "LONG_CAST"
+		}
+	},
+	"hash": "0x54df9d2d10fab73f77aef0c7e50fd3742f1fe3fb",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "WMnD4OFbjcMYp41sQcw/xJZxPVyFTDXpoqGaH8Mk0prHWw10BlIteO+a4l+UFcR7Yg7NeFAlRS6Bd8grlrHOBg==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

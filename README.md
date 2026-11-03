@@ -52,6 +52,24 @@ bun clean  # Removes all databases and output — clean slate
 bun doIt   # Full fetch for the new FID
 ```
 
+### Purge loop (delete unliked casts, keep verified backups)
+
+See `PLAN.md` for the full design. Commands:
+
+```bash
+bun run backup:all           # raw backup + verify of all live casts (no deletes)
+bun run backup:verify        # re-verify backups from disk (bit-rot drill)
+bun run backup:checkpoint    # offsite sync (git push / rsync) + CHECKPOINT.json
+bun run purge:run            # dry-run default: lists candidates + gate results, deletes nothing
+bun run purge:run --live 10  # live: auto-checkpoints first, deletes up to N candidates
+```
+
+Safety: a candidate must be live, not liked by you (likes are the keep
+mechanism), not younger than the public age policy (`GET /api/policy`), and
+backed up on disk with a passing cryptographic gate before any delete.
+Tombstones are written before submit; `bun clean` is guarded and the next
+`bun doIt` self-heals purged casts from `backups/`.
+
 ### Web server
 
 ```bash
@@ -72,6 +90,9 @@ Starts a web server (configurable via `PORT`) with the following endpoints:
 | `POST /doIt` | Trigger the archiver job (202 if started, 429 if already running) |
 | `POST /clear` | Clear the network cache so the next `/doIt` fetches fresh data |
 | `GET /browse/**` | Browse the `out/` directory — lists folders, renders `.md` files as HTML |
+| `GET /api/policy` | Public purge policy — `{ "min_age_days", "source" }` |
+| `GET /api/archive/stats` | Public archive stats (counts + casts/month histogram data) |
+| `GET /review*` | Purge review UI/API — token-gated (404 unless `REVIEW_TOKEN` set) |
 | `GET /llms.txt` | Machine-readable endpoint descriptions |
 
 Related env vars for the server: `X402_FACILITATOR_URL`, `X402_API_KEY`, `X402_ALLOWLIST`, `PUBLIC_APP_URL` (see `server.ts`).

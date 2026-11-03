@@ -1,0 +1,30 @@
+{
+	"data": {
+		"type": "MESSAGE_TYPE_CAST_ADD",
+		"fid": 3319217,
+		"timestamp": 181528519,
+		"network": "FARCASTER_NETWORK_MAINNET",
+		"castAddBody": {
+			"embedsDeprecated": [],
+			"mentions": [],
+			"parentCastId": {
+				"fid": 3319217,
+				"hash": "0xaa14f0afcbc580e22c053607deffaeadd609cfd6"
+			},
+			"parentUrl": null,
+			"text": "how it's going",
+			"embeds": [
+				{
+					"url": "https://cdn.artlu.xyz/2VaKXjXNEJs"
+				}
+			],
+			"mentionsPositions": [],
+			"type": "CAST"
+		}
+	},
+	"hash": "0x82bfd2bee0f5691a71eecc951c7c7fbb1017c93c",
+	"hashScheme": "HASH_SCHEME_BLAKE3",
+	"signature": "XnnEXSEhrqZClV0FkorOsh2Fne5mEymuCtZkO1hmuN+4pUpBADKoh5+GsbyYUJtzGb3hiKFMobZFT7tBvsMaCQ==",
+	"signatureScheme": "SIGNATURE_SCHEME_ED25519",
+	"signer": "0x6c57659e34e10cdc4774aeb28f674f53a39dc6fbcdf5620f25cb3eee2880758c"
+}

@@ -62,8 +62,8 @@ describe("queueLoop", () => {
 			parent_author: { fid: 9 },
 		});
 		await queueLoop([cast], true, 1);
-		expect(hasCastInDb(threadRoot.hash)).toBe(true);
-		expect(hasCastInDb(cast.hash)).toBe(true);
+		expect(await hasCastInDb(threadRoot.hash)).toBe(true);
+		expect(await hasCastInDb(cast.hash)).toBe(true);
 		expect(convStats.calls).toEqual([threadRoot.hash, cast.hash]);
 	});
 
