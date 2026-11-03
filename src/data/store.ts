@@ -89,8 +89,10 @@ export class StoreArchiveData implements ArchiveData {
 	 */
 	private async commit(mutate: (draft: ArchiveIndex) => void): Promise<void> {
 		if (this.deferred) {
-			mutate(this.cachedIndex!.index);
-			this.cachedIndex!.at = Date.now();
+			const cached = this.cachedIndex;
+			if (!cached) return;
+			mutate(cached.index);
+			cached.at = Date.now();
 			return;
 		}
 		const committed = await commitIndex(this.store, mutate);

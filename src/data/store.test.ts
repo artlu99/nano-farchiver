@@ -328,9 +328,10 @@ describe("deferred commits (store backend)", () => {
 
 		const idx = (await loadIndex(store))?.index;
 		const filename = hash2filename(parent.hash, parent.timestamp);
-		expect(idx?.rendered["artlu"]?.[filename]).toBeDefined();
+		expect(idx?.rendered.artlu?.[filename]).toBeDefined();
 	});
 });
+
 describe("reactions + settings (store-backed)", () => {
 	test("upsert + full-refresh delete of stale keys, fid-scoped", async () => {
 		await ctx.data.upsertReactions(3319217, [
