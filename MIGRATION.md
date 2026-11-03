@@ -274,9 +274,26 @@ Progress (2026-11-03):
       populated via `bun run import:s3`; `bun run verify:s3` passes all checks
       against the live bucket (counts match local sources, verbatim cast
       bytes, index sane, conditional-PUT probe PASS — R2 enforces If-Match).
-- [ ] **Next:** first store-backed archiver run (`ARCHIVE_BACKEND=store bun
-      run doIt`) as the stage-3 rehearsal; stand up the read-only `web` piece
-      against the bucket (stages 3–4).
+- [x] **Store-backed archiver run proven (stage 3 rehearsal).** First
+      `ARCHIVE_BACKEND=store` doIt crawled + wrote the bucket end-to-end
+      (1,338 convergence re-renders); the follow-up catch-up run closed a
+      2-cast feed-churn delta and `verify:s3` passed again. Perf fixes
+      landed en route: per-instance index cache, skip-if-rendered before
+      the object fetch, `listCasts` carrying ts.
+- [x] **Deferred index commits**: `deferCommits()`/`flushCommits()` — doIt
+      buffers index mutations in memory and lands ONE `meta/index.json`
+      PUT per run (~300 → 1; the cron-cost item). Crashed runs lose only
+      the buffered index; objects persist and the next run re-tags.
+- [x] **`web` piece (read-only Worker over the bucket)**: `web/` —
+      /browse listings + markdown pages + gated preview, /timeline from the
+      index, /api/cast|status|archive-stats|policy, /health + /uptime,
+      POST /doIt proxied to ARCHIVER_URL, x402 paywall port (env-gated),
+      wrangler.jsonc + public/ asset build, 10 route tests against an
+      injected MemoryStore (117 total). Deploy: `bun run web:deploy`.
+- [ ] **Next:** deploy the web worker (`bun run web:deploy`) + verify x402
+      end-to-end on staging; decide cadence + flip the writer
+      (`ARCHIVE_BACKEND=store` cron on one deployment); lifecycle rule for
+      noncurrent versions on the bucket.
 
 1. **Store + refactor (Bun-only, no behavior change).** `ArchiveStore` +
    `MemoryStore` + `S3Store`; `RunContext`; fid parameterization
