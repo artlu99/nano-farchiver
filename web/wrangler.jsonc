@@ -1,0 +1,20 @@
+{
+	// Read-only web worker: serves /browse, /timeline, /api/* from the bucket.
+	// Deploy:  bun run web:build && bunx wrangler deploy --config web/wrangler.jsonc
+	// Secrets: bunx wrangler secret put S3_ACCESS_KEY_ID --config web/wrangler.jsonc  (same for
+	//          S3_SECRET_ACCESS_KEY, X402_API_KEY)
+	"name": "farchiver-web",
+	"main": "index.ts",
+	"compatibility_date": "2026-01-15",
+	"compatibility_flags": ["nodejs_compat"],
+	"assets": { "directory": "../public", "binding": "ASSETS" },
+	"vars": {
+		"ARCHIVER_FID": "3319217",
+		"X402_USERNAME": "decent-artlu",
+		"S3_REGION": "auto",
+		// set these two to your real values (non-secret):
+		"S3_ENDPOINT": "https://<account_id>.r2.cloudflarestorage.com",
+		"S3_BUCKET": "nano-farchiver"
+	},
+	"observability": { "enabled": true }
+}

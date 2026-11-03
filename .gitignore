@@ -22,4 +22,5 @@ out/
 samples/
 nohup.out
 *.tar.gz
+public/
 
