@@ -29,6 +29,7 @@ const runContext = (): RunContext => {
 };
 
 export const doIt = async (fid: number, ctx: RunContext = runContext()) => {
+	await ctx.data.deferCommits();
 	try {
 		resetTimers();
 		const casts = await getCronFeed(fid);
@@ -50,9 +51,11 @@ export const doIt = async (fid: number, ctx: RunContext = runContext()) => {
 		await timeAsync("selfHeal", () => selfHealFromBackups("out", ctx));
 		await timeAsync("writeLoop", () => writeLoop("out", ctx));
 		console.log(`\ntimers:\n${timerReport()}`);
-	} catch (error) {
-		console.error(error instanceof Error ? error.message : String(error));
-		throw error;
+	} finally {
+		// Store backend: ~300 in-run index mutations coalesce into one PUT.
+		// On a crashed run the flush is skipped — objects remain, the next
+		// run re-tags them into the index (self-healing by re-crawl).
+		await ctx.data.flushCommits();
 	}
 };
 

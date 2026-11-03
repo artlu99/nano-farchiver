@@ -73,15 +73,16 @@ describe("commitIndex", () => {
 		const created = await commitIndex(store, (draft) => {
 			draft.casts["0xabc"] = [1, 0, null, null, 0, "hello"];
 		});
-		expect(created.casts["0xabc"]?.[5]).toBe("hello");
-		expect(created.updatedAt).toBeGreaterThan(0);
+		expect(created.index.casts["0xabc"]?.[5]).toBe("hello");
+		expect(created.index.updatedAt).toBeGreaterThan(0);
+		expect(created.etag).toBeDefined();
 		expect(await loadIndex(store)).not.toBeNull();
 
 		const updated = await commitIndex(store, (draft) => {
 			draft.users[1] = { username: "alice" };
 		});
-		expect(updated.casts["0xabc"]).toBeDefined();
-		expect(updated.users[1]?.username).toBe("alice");
+		expect(updated.index.casts["0xabc"]).toBeDefined();
+		expect(updated.index.users[1]?.username).toBe("alice");
 	});
 });
 

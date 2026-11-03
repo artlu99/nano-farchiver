@@ -320,6 +320,14 @@ WHERE NOT EXISTS (SELECT 1 FROM casts c WHERE c.hash = cast_quotes.quoted_hash)
 	async markRendered(_entries: RenderedEntryRef[]): Promise<void> {
 		// no-op: the SQLite backend checks renders via the fs sink
 	}
+
+	async deferCommits(): Promise<void> {
+		// no-op: SQLite writes are already immediate per statement
+	}
+
+	async flushCommits(): Promise<void> {
+		// no-op
+	}
 }
 
 const splitForms = (hash: string): [string, string] => {

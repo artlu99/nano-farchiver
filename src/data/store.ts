@@ -16,10 +16,15 @@ import {
 	type RenderedEntryRef,
 	type RenderedIndex,
 	reactionKey,
+	saveIndex,
 	settingKey,
 	userKey,
 } from "../store/indexModel";
-import { type ArchiveStore, bytesToText } from "../store/types";
+import {
+	type ArchiveStore,
+	bytesToText,
+	PreconditionFailedError,
+} from "../store/types";
 import type {
 	ArchiveData,
 	CastRef,
@@ -40,26 +45,93 @@ export class StoreArchiveData implements ArchiveData {
 	 * duration of a run, so cached reads are authoritative; the TTL only
 	 * guards a future second writer. Every commit updates the cache.
 	 */
-	private cachedIndex: { index: ArchiveIndex; at: number } | undefined;
+	private cachedIndex:
+		| {
+				index: ArchiveIndex;
+				etag?: string;
+				at: number;
+		  }
+		| undefined;
+	/** Set while `deferCommits()` is active: index mutations stay in memory. */
+	private deferred: { etag?: string } | undefined;
 
 	constructor(store: ArchiveStore) {
 		this.store = store;
 	}
 
 	private async readIndex(): Promise<ArchiveIndex> {
+		if (this.deferred && this.cachedIndex) {
+			return this.cachedIndex.index; // authoritative while deferring
+		}
 		if (
 			this.cachedIndex &&
 			Date.now() - this.cachedIndex.at < INDEX_CACHE_TTL_MS
 		) {
 			return this.cachedIndex.index;
 		}
-		const index = (await loadIndex(this.store))?.index ?? emptyIndex();
-		this.cachedIndex = { index, at: Date.now() };
-		return index;
+		const loaded = await loadIndex(this.store);
+		this.cachedIndex = {
+			index: loaded?.index ?? emptyIndex(),
+			etag: loaded?.etag,
+			at: Date.now(),
+		};
+		return this.cachedIndex.index;
 	}
 
-	private setCachedIndex(index: ArchiveIndex): void {
-		this.cachedIndex = { index, at: Date.now() };
+	private setCachedIndex(index: ArchiveIndex, etag?: string): void {
+		this.cachedIndex = { index, etag, at: Date.now() };
+	}
+
+	/**
+	 * Mutate the index through the active commit mode: immediate (conditional
+	 * RMW per call, awaited — tombstone-before-submit ordering depends on it)
+	 * or deferred (in-memory; one PUT at `flushCommits()`).
+	 */
+	private async commit(mutate: (draft: ArchiveIndex) => void): Promise<void> {
+		if (this.deferred) {
+			mutate(this.cachedIndex!.index);
+			this.cachedIndex!.at = Date.now();
+			return;
+		}
+		const committed = await commitIndex(this.store, mutate);
+		this.setCachedIndex(committed.index, committed.etag);
+	}
+
+	async deferCommits(): Promise<void> {
+		await this.readIndex(); // populate the cache + etag before deferring
+		this.deferred = { etag: this.cachedIndex?.etag };
+	}
+
+	async flushCommits(): Promise<void> {
+		const state = this.deferred;
+		this.deferred = undefined;
+		if (!state) return;
+		const cached = this.cachedIndex;
+		if (!cached) return;
+		cached.index.updatedAt = Date.now();
+		let etag = state.etag;
+		for (let attempt = 0; attempt < 3; attempt++) {
+			try {
+				const result = await saveIndex(this.store, cached.index, etag);
+				this.setCachedIndex(cached.index, result.etag);
+				return;
+			} catch (error) {
+				if (error instanceof PreconditionFailedError) {
+					// Single-writer means this should not happen; if it does,
+					// accept the remote etag and overwrite with our full state.
+					console.warn(
+						"flushCommits: index changed underneath — overwriting with local run state",
+					);
+					const loaded = await loadIndex(this.store);
+					etag = loaded?.etag;
+					continue;
+				}
+				throw error;
+			}
+		}
+		throw new Error(
+			"flushCommits: could not commit the index after 3 attempts",
+		);
 	}
 
 	async isDeleted(hash: string): Promise<boolean> {
@@ -87,12 +159,11 @@ export class StoreArchiveData implements ArchiveData {
 				// already tombstoned — ignore matches the SQLite semantics
 			}),
 		);
-		const committed = await commitIndex(this.store, (index) => {
+		await this.commit((index) => {
 			for (const hash of normalized) {
 				index.deleted[hash] = [reason, deletedAt];
 			}
 		});
-		this.setCachedIndex(committed);
 	}
 
 	async filterNotDeleted(hashes: string[]): Promise<string[]> {
@@ -231,7 +302,7 @@ export class StoreArchiveData implements ArchiveData {
 
 		// One index commit for the whole batch (last: reply-count bumps for
 		// parents already present — the live counter replaces countReplies SQL).
-		const committed = await commitIndex(this.store, (draft) => {
+		await this.commit((draft) => {
 			for (const { fid, username } of userEntries) {
 				draft.users[String(fid)] = { username };
 			}
@@ -263,7 +334,6 @@ export class StoreArchiveData implements ArchiveData {
 				if (parent) parent[4] += 1;
 			}
 		});
-		this.setCachedIndex(committed);
 	}
 
 	async getUser(fid: number): Promise<User | undefined> {
@@ -292,10 +362,9 @@ export class StoreArchiveData implements ArchiveData {
 	async unmarkDeleted(hash: string): Promise<void> {
 		const key = normalizeHash(hash);
 		await this.store.deleteKey(deletedKey(key));
-		const committed = await commitIndex(this.store, (draft) => {
+		await this.commit((draft) => {
 			delete draft.deleted[key];
 		});
-		this.setCachedIndex(committed);
 	}
 
 	async restoreTombstonedCast(
@@ -320,11 +389,10 @@ export class StoreArchiveData implements ArchiveData {
 		).catch(() => {
 			// already tombstoned
 		});
-		const committed = await commitIndex(this.store, (draft) => {
+		await this.commit((draft) => {
 			if (draft.casts[hash] === undefined) draft.casts[hash] = entry;
 			draft.deleted[hash] ??= [reason, deletedAt];
 		});
-		this.setCachedIndex(committed);
 	}
 
 	async upsertReactions(fid: number, entries: ReactionEntry[]): Promise<void> {
@@ -372,14 +440,13 @@ export class StoreArchiveData implements ArchiveData {
 
 	async markRendered(entries: RenderedEntryRef[]): Promise<void> {
 		if (entries.length === 0) return;
-		const committed = await commitIndex(this.store, (draft) => {
+		await this.commit((draft) => {
 			for (const { username, filename, embedsFp, replyCount } of entries) {
 				const files = draft.rendered[username] ?? {};
 				files[filename] = { embedsFp, replyCount };
 				draft.rendered[username] = files;
 			}
 		});
-		this.setCachedIndex(committed);
 	}
 }
 

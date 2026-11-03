@@ -95,6 +95,12 @@ export interface ArchiveData {
 	getSetting(key: string): Promise<string | undefined>;
 	setSetting(key: string, value: string): Promise<void>;
 
+	// --- deferred index commits (store backend; sqlite: immediate writes) ---
+	/** Buffer index mutations in memory; call `flushCommits()` once per run. */
+	deferCommits(): Promise<void>;
+	/** Write all buffered index mutations as one conditional PUT. */
+	flushCommits(): Promise<void>;
+
 	// --- skip-if-rendered map ---
 	/**
 	 * The `rendered` map from the index. SQLite backend returns an empty map —

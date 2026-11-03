@@ -158,9 +158,12 @@ export const saveIndex = async (
 	store: ArchiveStore,
 	index: ArchiveIndex,
 	etag?: string,
-): Promise<void> => {
-	await putJSON(store, INDEX_KEY, index, saveOptions(etag));
-};
+): Promise<PutResult> => putJSON(store, INDEX_KEY, index, saveOptions(etag));
+
+export interface CommittedIndex {
+	index: ArchiveIndex;
+	etag?: string;
+}
 
 /**
  * Read-mutate-write the index with retry on lost races. `mutate` may be async
@@ -170,7 +173,7 @@ export const commitIndex = async (
 	store: ArchiveStore,
 	mutate: (draft: ArchiveIndex) => void | Promise<void>,
 	attempts = 5,
-): Promise<ArchiveIndex> => {
+): Promise<CommittedIndex> => {
 	let lastError: unknown;
 	for (let attempt = 0; attempt < attempts; attempt++) {
 		const loaded = await loadIndex(store);
@@ -178,8 +181,8 @@ export const commitIndex = async (
 		await mutate(index);
 		index.updatedAt = Date.now();
 		try {
-			await saveIndex(store, index, loaded?.etag);
-			return index;
+			const result = await saveIndex(store, index, loaded?.etag);
+			return { index, etag: result.etag };
 		} catch (error) {
 			if (error instanceof PreconditionFailedError) {
 				lastError = error;

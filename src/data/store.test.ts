@@ -19,9 +19,11 @@ import { hash2filename, normalizeHash } from "../lib/helpers";
 import {
 	castKey,
 	deletedKey,
+	emptyIndex,
 	getJSON,
 	listAllKeys,
 	loadIndex,
+	saveIndex,
 	userKey,
 } from "../store/indexModel";
 import { MemoryStore } from "../store/memory";
@@ -286,6 +288,49 @@ describe("tombstone ledger + heal (store-backed)", () => {
 	});
 });
 
+describe("deferred commits (store backend)", () => {
+	test("mutations stay in memory until flush, then land as one write", async () => {
+		const cast = makeCast();
+		await ctx.data.deferCommits();
+		await tagCast(cast, ctx);
+		await markCastsDeleted(["0xdead0"], "test", 1000, ctx);
+
+		// visible to in-run reads immediately (single-writer authority)
+		expect(await hasCastInDb("0xdead0", ctx)).toBe(true);
+		// but not yet committed to the store
+		expect(await loadIndex(store)).toBeNull();
+		expect(await store.get(castKey(cast.hash))).not.toBeNull(); // objects land eagerly
+
+		await ctx.data.flushCommits();
+		const idx = (await loadIndex(store))?.index;
+		expect(idx?.casts[normalizeHash(cast.hash)]).toBeDefined();
+		expect(idx?.deleted["0xdead0"]).toBeDefined();
+		expect(await hasCastInDb("0xdead0", ctx)).toBe(true);
+	});
+
+	test("flush wins over a racing writer (single-writer last word)", async () => {
+		await ctx.data.deferCommits();
+		await tagCast(makeCast({ hash: "0xabc0" }), ctx);
+		// a concurrent writer lands a different index first (etag moves)
+		await saveIndex(store, emptyIndex(), undefined);
+		await ctx.data.flushCommits();
+
+		const idx = (await loadIndex(store))?.index;
+		expect(idx?.casts["0xabc0"]).toBeDefined();
+	});
+
+	test("renders marked during defer are flushed too", async () => {
+		const parent = makeCast();
+		await ctx.data.deferCommits();
+		await tagCasts([parent], ctx);
+		await castsLoop("ignored", ctx);
+		await ctx.data.flushCommits();
+
+		const idx = (await loadIndex(store))?.index;
+		const filename = hash2filename(parent.hash, parent.timestamp);
+		expect(idx?.rendered["artlu"]?.[filename]).toBeDefined();
+	});
+});
 describe("reactions + settings (store-backed)", () => {
 	test("upsert + full-refresh delete of stale keys, fid-scoped", async () => {
 		await ctx.data.upsertReactions(3319217, [
