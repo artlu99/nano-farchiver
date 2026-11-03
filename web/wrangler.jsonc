@@ -8,12 +8,20 @@
 	"compatibility_date": "2026-01-15",
 	"compatibility_flags": ["nodejs_compat"],
 	"assets": { "directory": "../public", "binding": "ASSETS" },
+	"services": [
+		{
+			// Worker→Worker calls to the facilitator: fetching its *.workers.dev
+			// URL from inside a Worker is blocked by Cloudflare (error 1042).
+			"binding": "FACILITATOR",
+			"service": "cf-x402-facilitator"
+		}
+	],
 	"vars": {
 		"ARCHIVER_FID": "3319217",
 		"X402_USERNAME": "decent-artlu",
 		"S3_REGION": "auto",
 		// set these two to your real values (non-secret):
-		"S3_ENDPOINT": "https://<account_id>.r2.cloudflarestorage.com",
+		"S3_ENDPOINT": "https://aae000450784e31504d2d4d9b3eb314f.r2.cloudflarestorage.com",
 		"S3_BUCKET": "nano-farchiver"
 	},
 	"observability": { "enabled": true }

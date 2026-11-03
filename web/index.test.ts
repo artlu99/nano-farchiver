@@ -62,6 +62,7 @@ const FILENAME_A = "20260101-000000-aaa1aaaa.md";
 
 const env: Env = {
 	ASSETS: { fetch: async () => new Response("asset", { status: 200 }) },
+	FACILITATOR: { fetch: async () => new Response("{}", { status: 200 }) },
 	S3_ENDPOINT: "https://example.r2.cloudflarestorage.com",
 	S3_BUCKET: "test",
 	S3_REGION: "auto",
@@ -69,7 +70,7 @@ const env: Env = {
 	S3_SECRET_ACCESS_KEY: "test",
 	ARCHIVER_FID: "3319217",
 	// X402_API_KEY intentionally unset → paywall disabled in tests
-} as Env;
+} as unknown as Env;
 
 const request = async (path: string): Promise<Response> =>
 	(await app.request(path, undefined, env)) as Response;

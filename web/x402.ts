@@ -18,7 +18,7 @@ import type { Context, Next } from "hono";
 import { getAddress } from "viem";
 import type { Env } from "./env";
 
-const X402_FACILITATOR_URL = "https://cf-x402-facilitator.artlu.workers.dev";
+export const FACILITATOR_URL = "https://cf-x402-facilitator.artlu.workers.dev";
 const PAY_TO_ADDRESS = "0xAa591218305E621D8A128309e655A91e49A87a92";
 const PRICE = "$0.01";
 const NETWORK = "eip155:8453"; // Base mainnet
@@ -36,28 +36,27 @@ interface Gate {
 	verifyPayer: (c: Context<{ Bindings: Env }>) => Promise<string | undefined>;
 }
 
-let gateSingleton: Gate | undefined;
-
-const decodeJsonSafe = (value: unknown): string => {
-	try {
-		return JSON.stringify(
-			value,
-			(_k, v) => (typeof v === "bigint" ? v.toString() : v),
-			2,
-		);
-	} catch {
-		return String(value);
-	}
-};
+let gatePromise: Promise<Gate> | undefined;
 
 /**
  * The x402 paywall stack, ported from server.ts and built lazily on first
  * use. DISABLED unless X402_API_KEY is configured — ungated mode serves full
  * content (dev/staging; the paywall is prod-only config).
  */
-export const getGate = (env: Env): Gate | undefined => {
-	if (gateSingleton) return gateSingleton;
-	if (!env.X402_API_KEY) return undefined;
+export const getGate = (env: Env): Promise<Gate | undefined> => {
+	gatePromise ??= buildGate(env);
+	return gatePromise;
+};
+
+const buildGate = async (env: Env): Promise<Gate> => {
+	if (!env.X402_API_KEY) {
+		return {
+			username: env.X402_USERNAME ?? "decent-artlu",
+			allowlist: new Set<string>(),
+			gate: async (_c, onPaid) => onPaid(), // no key: paywall disabled
+			verifyPayer: async () => undefined,
+		};
+	}
 
 	const username = env.X402_USERNAME ?? "decent-artlu";
 	const apiKey = env.X402_API_KEY;
@@ -72,7 +71,7 @@ export const getGate = (env: Env): Gate | undefined => {
 	);
 
 	const facilitatorClient = new HTTPFacilitatorClient({
-		url: X402_FACILITATOR_URL,
+		url: FACILITATOR_URL,
 		createAuthHeaders: async () => {
 			const auth = { Authorization: `Bearer ${apiKey}` };
 			return {
@@ -102,6 +101,10 @@ export const getGate = (env: Env): Gate | undefined => {
 						: String(err),
 			});
 		});
+	// Required: load the facilitator's supported kinds before any verify —
+	// the lazy path fails with "no supported payment kinds" on Workers.
+	await x402Server.initialize();
+	console.log("[x402] facilitator kinds loaded");
 
 	const x402HttpServer = new x402HTTPResourceServer(x402Server, {
 		[`GET /browse/${username}/*`]: {
@@ -193,7 +196,7 @@ export const getGate = (env: Env): Gate | undefined => {
 		}
 	};
 
-	gateSingleton = {
+	return {
 		username,
 		allowlist,
 		gate: async (c, onPaid) => {
@@ -206,5 +209,4 @@ export const getGate = (env: Env): Gate | undefined => {
 		},
 		verifyPayer,
 	};
-	return gateSingleton;
 };

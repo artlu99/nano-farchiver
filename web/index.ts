@@ -13,6 +13,7 @@ import {
 import { getIndex } from "./data";
 import type { Env } from "./env";
 import { archiverFid, gatedUsername, getStore } from "./env";
+import { installFacilitatorFetch } from "./facilitator-fetch";
 import { statsFromIndex } from "./page";
 import { timelineHtml } from "./timeline";
 import { getGate } from "./x402";
@@ -154,7 +155,7 @@ app.get("/browse/:username/:filename", async (c) => {
 	if (!obj) return notFoundHtml();
 	const markdown = new TextDecoder().decode(obj.body);
 
-	const gate = getGate(env);
+	const gate = await getGate(env);
 	const gatedUser = gate?.username ?? gatedUsername(env);
 	const isGated = gate !== undefined && username === gatedUser;
 	const wantsPay = c.req.query("pay") === "1";
@@ -214,6 +215,8 @@ app.onError((error, c) => {
 });
 
 export default {
-	fetch: (request: Request, env: Env): Response | Promise<Response> =>
-		app.fetch(request, env),
+	fetch: (request: Request, env: Env): Response | Promise<Response> => {
+		installFacilitatorFetch(env);
+		return app.fetch(request, env);
+	},
 };
