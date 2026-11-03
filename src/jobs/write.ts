@@ -167,7 +167,7 @@ export const castsLoop = async (
 	const pendingRendered: RenderedEntryRef[] = [];
 	let written = 0;
 
-	for (const { fid, hash } of casts) {
+	for (const { fid, hash, ts } of casts) {
 		// Tombstoned casts are never rendered or rewritten — their archived
 		// files stay untouched, and re-rendering after a purge is self-heal's job.
 		if (await isCastDeleted(hash, ctx)) continue;
@@ -175,28 +175,25 @@ export const castsLoop = async (
 		if (!user) {
 			continue;
 		}
-		const hydratedCast = await getCastOrLog(hash, fid, ctx);
-		if (!hydratedCast) continue;
-
 		// original template-literal behavior: null username → "null" directory
 		const username = user.username ?? "null";
-		const filename = hash2filename(hash, hydratedCast.timestamp);
+		const filename = hash2filename(hash, new Date(ts));
 		const castRelPath = `${username}/${filename}`;
-		const embedsFp = embedsFingerprint(hydratedCast.embeds ?? []);
 		const replyCount = await ctx.data.countReplies(fid, hash);
 
-		// Skip-if-rendered: a matching rendered entry (embeds fingerprint +
-		// reply count) means the file is current — no object GET needed.
-		// Safe because nothing writes `<deleted>` markers anymore, and the
-		// seeded out/ corpus contains none (verified: grep = 0).
+		// Skip-if-rendered WITHOUT fetching the cast object: embeds are
+		// protocol-immutable, so a rendered entry with a matching reply count
+		// means the file is current. The embeds fingerprint is computed only
+		// when we actually render. (Zero `<deleted>` markers exist in the
+		// seeded corpus — verified by grep at migration time.)
 		const prior = rendered[username]?.[filename];
-		if (
-			prior &&
-			prior.embedsFp === embedsFp &&
-			prior.replyCount === replyCount
-		) {
+		if (prior && prior.replyCount === replyCount) {
 			continue;
 		}
+
+		const hydratedCast = await getCastOrLog(hash, fid, ctx);
+		if (!hydratedCast) continue;
+		const embedsFp = embedsFingerprint(hydratedCast.embeds ?? []);
 
 		const embedBlock = await renderEmbedsAsync(hydratedCast.embeds ?? [], ctx);
 		const existing = await sink.read(castRelPath);

@@ -105,9 +105,13 @@ export class SqliteArchiveData implements ArchiveData {
 	}
 
 	async listCasts(): Promise<CastRef[]> {
-		return getDb()
-			.query("SELECT hash, fid FROM casts ORDER BY hash")
-			.all() as CastRef[];
+		return (
+			getDb()
+				.query(
+					"SELECT hash, fid, CAST(STRFTIME('%s', json_extract(data, '$.timestamp')) AS INTEGER) * 1000 AS ts FROM casts ORDER BY hash",
+				)
+				.all() as { hash: string; fid: number; ts: number | null }[]
+		).map((row) => ({ hash: row.hash, fid: row.fid, ts: row.ts ?? 0 }));
 	}
 
 	async listCastHashesByFid(fid: number): Promise<string[]> {

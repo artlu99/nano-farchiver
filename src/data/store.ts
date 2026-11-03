@@ -20,7 +20,12 @@ import {
 	userKey,
 } from "../store/indexModel";
 import { type ArchiveStore, bytesToText } from "../store/types";
-import type { ArchiveData, DeletedEntry, ReactionEntry } from "./types";
+import type {
+	ArchiveData,
+	CastRef,
+	DeletedEntry,
+	ReactionEntry,
+} from "./types";
 
 /**
  * Bucket-backed ArchiveData: `casts/*` / `users/*` / `deleted/*` objects are
@@ -123,12 +128,12 @@ export class StoreArchiveData implements ArchiveData {
 		return count;
 	}
 
-	async listCasts(): Promise<{ hash: string; fid: number }[]> {
+	async listCasts(): Promise<CastRef[]> {
 		const index = await this.readIndex();
-		const refs: { hash: string; fid: number }[] = [];
+		const refs: CastRef[] = [];
 		for (const hash of Object.keys(index.casts).sort()) {
 			const entry = index.casts[hash];
-			if (entry) refs.push({ hash, fid: entry[0] });
+			if (entry) refs.push({ hash, fid: entry[0], ts: entry[1] });
 		}
 		return refs;
 	}

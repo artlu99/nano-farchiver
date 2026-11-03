@@ -5,6 +5,8 @@ import type { RenderedEntryRef, RenderedIndex } from "../store/indexModel";
 export interface CastRef {
 	hash: string;
 	fid: number;
+	/** Epoch ms of the cast timestamp (drives render filenames). */
+	ts: number;
 }
 
 export interface ReactionEntry {
