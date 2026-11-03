@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { readManifest } from "./backup";
-import { ARCHIVER_FID, getPolicy } from "./config";
+import { ARCHIVER_FID, getPolicySync } from "./config";
 
 export interface ArchiveStats {
 	db_present: boolean;
@@ -22,7 +22,8 @@ let cache: { at: number; stats: ArchiveStats } | null = null;
 /** Local-only counts (no network): fast enough for a public page view. */
 export const archiveStats = (): ArchiveStats => {
 	if (cache && Date.now() - cache.at < LOCAL_STATS_TTL_MS) return cache.stats;
-	const policy = getPolicy();
+	// sync sqlite path until the web-tier port (see getPolicySync)
+	const policy = getPolicySync();
 	if (!existsSync("db/queue.db3")) {
 		return {
 			db_present: false,

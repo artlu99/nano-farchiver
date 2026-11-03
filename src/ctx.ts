@@ -2,6 +2,7 @@ import { SqliteArchiveData } from "./data/sqlite";
 import { StoreArchiveData } from "./data/store";
 import type { ArchiveData } from "./data/types";
 import type { User } from "./lib/helpers";
+import { FsRenderSink, type RenderSink, StoreRenderSink } from "./sink";
 import type { ArchiveStore } from "./store/types";
 
 /**
@@ -15,18 +16,22 @@ export interface RunContext {
 	readonly data: ArchiveData;
 	readonly missingCastHashes: Set<string>;
 	readonly userCache: Map<number, User>;
+	/** Render target: local out/ root for SQLite, bucket objects for store. */
+	readonly out: (root: string) => RenderSink;
 }
 
 export const createSqliteRunContext = (): RunContext => ({
 	data: new SqliteArchiveData(),
 	missingCastHashes: new Set(),
 	userCache: new Map(),
+	out: (root: string) => new FsRenderSink(root),
 });
 
 export const createStoreRunContext = (store: ArchiveStore): RunContext => ({
 	data: new StoreArchiveData(store),
 	missingCastHashes: new Set(),
 	userCache: new Map(),
+	out: () => new StoreRenderSink(store),
 });
 
 let defaultContext: RunContext | undefined;

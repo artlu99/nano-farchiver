@@ -6,6 +6,18 @@ export interface CastRef {
 	fid: number;
 }
 
+export interface ReactionEntry {
+	hash: string;
+	type: string;
+	updatedAt: number;
+}
+
+export interface DeletedEntry {
+	hash: string;
+	reason: string;
+	deletedAt: number;
+}
+
 /**
  * The data surface `jobs/` and `lib/` use — the successor of the direct
  * `getDb()` calls. Two implementations:
@@ -47,4 +59,36 @@ export interface ArchiveData {
 	tagCasts(casts: Cast[]): Promise<void>;
 	getUser(fid: number): Promise<User | undefined>;
 	listUserFids(): Promise<number[]>;
+
+	// --- tombstone ledger / purge surface ---
+	/** All tombstones, newest first (deleted_at DESC). */
+	listDeleted(): Promise<DeletedEntry[]>;
+	/** Remove a tombstone entirely (purge "release" resume rule). */
+	unmarkDeleted(hash: string): Promise<void>;
+	/**
+	 * Self-heal insert: store the cast AND tombstone it (INSERT OR IGNORE
+	 * semantics for both). Unlike `tagCasts`, this must not refuse
+	 * tombstoned casts — restoring purged casts is its whole job.
+	 */
+	restoreTombstonedCast(
+		cast: Cast,
+		reason: string,
+		deletedAt: number,
+	): Promise<void>;
+
+	// --- like-set mirror (purge) ---
+	/** fid is part of the fact: likes of different fids are different rows. */
+	upsertReactions(fid: number, entries: ReactionEntry[]): Promise<void>;
+	/**
+	 * Like-set refresh is full, never incremental: drop every reaction of
+	 * `fid` that was not touched this run (staleness = an unlike).
+	 */
+	deleteReactionsNotIn(
+		fid: number,
+		keys: { hash: string; type: string }[],
+	): Promise<void>;
+
+	// --- settings (purge policy etc.) ---
+	getSetting(key: string): Promise<string | undefined>;
+	setSetting(key: string, value: string): Promise<void>;
 }

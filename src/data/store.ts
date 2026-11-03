@@ -3,18 +3,22 @@ import { mapWithConcurrency } from "../lib/concurrency";
 import { normalizeHash, quoteHashes, type User } from "../lib/helpers";
 import {
 	type ArchiveIndex,
+	type CastIndexEntry,
 	castKey,
 	commitIndex,
 	deletedKey,
 	emptyIndex,
 	getJSON,
+	listAllKeys,
 	loadIndex,
 	previewOf,
 	putJSON,
+	reactionKey,
+	settingKey,
 	userKey,
 } from "../store/indexModel";
 import { type ArchiveStore, bytesToText } from "../store/types";
-import type { ArchiveData } from "./types";
+import type { ArchiveData, DeletedEntry, ReactionEntry } from "./types";
 
 /**
  * Bucket-backed ArchiveData: `casts/*` / `users/*` / `deleted/*` objects are
@@ -245,6 +249,108 @@ export class StoreArchiveData implements ArchiveData {
 			.map(Number)
 			.filter((fid) => Number.isFinite(fid));
 	}
+
+	async listDeleted(): Promise<DeletedEntry[]> {
+		const index = await this.readIndex();
+		const entries: DeletedEntry[] = Object.entries(index.deleted).map(
+			([hash, [reason, deletedAt]]) => ({
+				hash,
+				reason,
+				deletedAt,
+			}),
+		);
+		return entries.sort((a, b) => b.deletedAt - a.deletedAt);
+	}
+
+	async unmarkDeleted(hash: string): Promise<void> {
+		const key = normalizeHash(hash);
+		await this.store.deleteKey(deletedKey(key));
+		await commitIndex(this.store, (draft) => {
+			delete draft.deleted[key];
+		});
+	}
+
+	async restoreTombstonedCast(
+		cast: Cast,
+		reason: string,
+		deletedAt: number,
+	): Promise<void> {
+		const hash = normalizeHash(cast.hash);
+		const entry = indexEntryFor(cast);
+		// Objects first (create-only = INSERT OR IGNORE), then one index commit
+		// carrying both the casts entry and the tombstone.
+		await this.store
+			.put(castKey(hash), JSON.stringify(cast), { ifNoneMatch: "*" })
+			.catch(() => {
+				// already archived — keep existing bytes
+			});
+		await putJSON(
+			this.store,
+			deletedKey(hash),
+			{ reason, deleted_at: deletedAt },
+			{ ifNoneMatch: "*" },
+		).catch(() => {
+			// already tombstoned
+		});
+		await commitIndex(this.store, (draft) => {
+			if (draft.casts[hash] === undefined) draft.casts[hash] = entry;
+			draft.deleted[hash] ??= [reason, deletedAt];
+		});
+	}
+
+	async upsertReactions(fid: number, entries: ReactionEntry[]): Promise<void> {
+		if (entries.length === 0) return;
+		await mapWithConcurrency(entries, PUT_CONCURRENCY, async (entry) =>
+			putJSON(this.store, reactionKey(fid, entry.hash, entry.type), {
+				updated_at: entry.updatedAt,
+			}),
+		);
+	}
+
+	async deleteReactionsNotIn(
+		fid: number,
+		keys: { hash: string; type: string }[],
+	): Promise<void> {
+		const prefix = `reactions/${fid}/`;
+		const keep = new Set(
+			keys.map((key) => reactionKey(fid, key.hash, key.type)),
+		);
+		const existing = await listAllKeys(this.store, prefix);
+		const stale = existing.filter((key) => !keep.has(key));
+		await mapWithConcurrency(stale, PUT_CONCURRENCY, (key) =>
+			this.store.deleteKey(key),
+		);
+	}
+
+	async getSetting(key: string): Promise<string | undefined> {
+		const stored = await getJSON<{ value: string }>(
+			this.store,
+			settingKey(key),
+		);
+		return stored?.value;
+	}
+
+	async setSetting(key: string, value: string): Promise<void> {
+		await putJSON(this.store, settingKey(key), {
+			value,
+			updated_at: Date.now(),
+		});
+	}
 }
 
 const PUT_CONCURRENCY = 8;
+
+/** Index tuple builder shared by tagCasts and restoreTombstonedCast. */
+const indexEntryFor = (cast: Cast): CastIndexEntry => {
+	const parentHash = cast.parent_hash ? normalizeHash(cast.parent_hash) : null;
+	const parentFid = cast.parent_author?.fid ?? null;
+	const tsMs = cast.timestamp ? Date.parse(cast.timestamp) : Number.NaN;
+	return [
+		cast.author?.fid ?? 0,
+		Number.isFinite(tsMs) ? tsMs : 0,
+		parentHash,
+		parentFid,
+		0,
+		previewOf(cast.text ?? ""),
+	];
+};

@@ -1,4 +1,5 @@
 import { ed25519, fromFarcasterTime, MessageData } from "@farcaster/core";
+import { defaultRunContext, type RunContext } from "../ctx";
 import {
 	manifestSha256,
 	readBackupFiles,
@@ -6,7 +7,6 @@ import {
 	readManifest,
 	sha256Hex,
 } from "./backup";
-import { getDb } from "./db";
 import { normalizeHash } from "./helpers";
 import { snapOnChainSigners } from "./snapchain";
 
@@ -78,7 +78,10 @@ export const signerRegistered = async (
 // The data↔hash binding is inherited from the HTTPS gateway response and
 // cross-checked against the independent local archive copy (different upstream).
 // Upgrade path: fetch raw `data_bytes` via snapchain gRPC and hash those.
-export const gateFromDisk = async (hash: string): Promise<GateResult> => {
+export const gateFromDisk = async (
+	hash: string,
+	ctx: RunContext = defaultRunContext(),
+): Promise<GateResult> => {
 	const normalized = normalizeHash(hash);
 	const checks = emptyChecks();
 
@@ -164,12 +167,10 @@ export const gateFromDisk = async (hash: string): Promise<GateResult> => {
 		// registered === null → gateway unavailable: degraded to hash+sig, pass loudly
 
 		// 6. second source: text agrees with the local archive copy (informational)
-		const row = getDb()
-			.query("SELECT data FROM casts WHERE hash = ?")
-			.get(normalized) as { data: string } | undefined;
-		if (row) {
+		const data = await ctx.data.getCastData(normalized);
+		if (data !== undefined) {
 			try {
-				const localText = (JSON.parse(row.data) as { text?: string }).text;
+				const localText = (JSON.parse(data) as { text?: string }).text;
 				checks.text_matches_local_archive =
 					localText === (json.data?.castAddBody?.text ?? "");
 			} catch {

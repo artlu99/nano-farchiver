@@ -463,8 +463,8 @@ app.post("/clear", async (c) => {
 // Purge policy (public) + review surface (fail-closed, token-gated)
 // ---------------------------------------------------------------------------
 
-app.get("/api/policy", (c) => {
-	const policy = getPolicy();
+app.get("/api/policy", async (c) => {
+	const policy = await getPolicy();
 	return c.json({ min_age_days: policy.minAgeDays, source: policy.source });
 });
 
@@ -502,7 +502,7 @@ app.get("/review/candidates", async (c) => {
 
 app.get("/review/deleted", async (c) => {
 	const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
-	return c.json(purge.deletedLedger(page, 50));
+	return c.json(await purge.deletedLedger(page, 50));
 });
 
 app.post("/review/like/:hash", async (c) => {
@@ -554,7 +554,7 @@ app.post("/review/purge", async (c) => {
 app.post("/review/policy", async (c) => {
 	try {
 		const body = (await c.req.json()) as { min_age_days?: number };
-		const policy = setPolicy(Number(body.min_age_days));
+		const policy = await setPolicy(Number(body.min_age_days));
 		return c.json({ min_age_days: policy.minAgeDays, source: policy.source });
 	} catch (error) {
 		return c.json(

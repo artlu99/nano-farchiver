@@ -257,13 +257,22 @@ Progress (2026-11-03):
       matching). `cache.db3` → in-memory run cache (`bun clear` is now a
       no-op kept for habit). Module globals (`missingCastHashes`,
       `userCache`, neynar caches) are context-scoped.
-      Still SQLite-backed (port with purge/backup next): `jobs/purge.ts`,
-      `lib/backup.ts` self-heal writes, `lib/config.ts` policy, stats/timeline
-      read paths.
+- [x] **Purge/heal/render port**: `RenderSink` (`src/sink.ts` — fs or bucket
+      objects) backs castsLoop/fidsLoop/self-heal renders; purge internals
+      (like-set mirror, resume rules incl. `unmarkDeleted` release, drift
+      preflight, deleted ledger, `restoreTombstonedCast` heal insert) and
+      settings/policy are data-layer ops on both backends; `getPolicy` is
+      async per-fid-capable (`getPolicySync` is the transitional stats path);
+      the gate's second-source text check reads via the data layer.
+      Still fs/sqlite (port with the archiver service deploy): `backups/`
+      artifacts + offsite checkpoint (§5.3 stays Bun), `stats.ts`/`timeline`
+      read paths (web tier, stage 4).
+- [x] **Backend flip switch**: `ARCHIVE_BACKEND=store bun run doIt` runs the
+      whole pipeline (fetch → tag → heal → render) against the bucket; unset
+      keeps SQLite + local `out/`. This is the stage-3 single-writer switch.
 - [ ] **Next:** create the R2 bucket + read-write token, set `S3_*` env, run the
-      real import (`bun run import:s3`), then `bun run verify:s3`; port
-      purge/backup to the data layer so `doIt` can default to
-      `createStoreRunContext`.
+      real import (`bun run import:s3`), then `bun run verify:s3`; stand up the
+      read-only `web` piece against the bucket (stages 3–4).
 
 1. **Store + refactor (Bun-only, no behavior change).** `ArchiveStore` +
    `MemoryStore` + `S3Store`; `RunContext`; fid parameterization

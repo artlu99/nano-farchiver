@@ -1,3 +1,4 @@
+import { defaultRunContext, type RunContext } from "../ctx";
 import { getDb } from "./db";
 
 export const ARCHIVER_FID = Number(process.env.ARCHIVER_FID ?? 3319217);
@@ -10,44 +11,71 @@ export interface PurgePolicy {
 	source: "settings" | "env" | "default";
 }
 
+const policyKeys = (fid?: number): string[] =>
+	fid !== undefined ? [`${MIN_AGE_KEY}:${fid}`, MIN_AGE_KEY] : [MIN_AGE_KEY];
+
+const fromStored = (value: string): PurgePolicy | undefined => {
+	const parsed = Number(value);
+	return Number.isFinite(parsed) && parsed >= 0
+		? { minAgeDays: parsed, source: "settings" }
+		: undefined;
+};
+
+const fromEnv = (): PurgePolicy | undefined => {
+	const env = Number(process.env.PURGE_MIN_AGE_DAYS);
+	return Number.isFinite(env) && env >= 0
+		? { minAgeDays: env, source: "env" }
+		: undefined;
+};
+
 /**
- * Effective purge policy. Precedence: fid-scoped settings row > global settings
- * row > PURGE_MIN_AGE_DAYS env > default. Publicly inspectable via GET
- * /api/policy — never treat as secret. (Sync until the purge surface moves to
- * the bucket store; the web tier reads the same settings objects async.)
+ * Effective purge policy. Precedence: fid-scoped settings row > global
+ * settings row > PURGE_MIN_AGE_DAYS env > default. Publicly inspectable via
+ * GET /api/policy — never treat as secret.
  */
-export const getPolicy = (fid?: number): PurgePolicy => {
-	const keys =
-		fid !== undefined ? [`${MIN_AGE_KEY}:${fid}`, MIN_AGE_KEY] : [MIN_AGE_KEY];
-	for (const key of keys) {
+export const getPolicy = async (options?: {
+	fid?: number;
+	ctx?: RunContext;
+}): Promise<PurgePolicy> => {
+	const ctx = options?.ctx ?? defaultRunContext();
+	for (const key of policyKeys(options?.fid)) {
+		const stored = await ctx.data.getSetting(key);
+		const policy = stored !== undefined ? fromStored(stored) : undefined;
+		if (policy) return policy;
+	}
+	return fromEnv() ?? { minAgeDays: DEFAULT_MIN_AGE_DAYS, source: "default" };
+};
+
+export const setPolicy = async (
+	minAgeDays: number,
+	options?: { fid?: number; ctx?: RunContext },
+): Promise<PurgePolicy> => {
+	if (!Number.isFinite(minAgeDays) || minAgeDays < 0) {
+		throw new Error(`invalid min_age_days: ${minAgeDays}`);
+	}
+	const key =
+		options?.fid !== undefined ? `${MIN_AGE_KEY}:${options.fid}` : MIN_AGE_KEY;
+	const ctx = options?.ctx ?? defaultRunContext();
+	await ctx.data.setSetting(key, String(minAgeDays));
+	return { minAgeDays, source: "settings" };
+};
+
+/**
+ * SQLite-only synchronous variant for the not-yet-ported sync read paths
+ * (stats.ts, serve.ts). Transitional — goes away with the web-tier port
+ * (MIGRATION.md stage 4), which reads settings objects async.
+ */
+export const getPolicySync = (fid?: number): PurgePolicy => {
+	for (const key of policyKeys(fid)) {
 		try {
 			const row = getDb()
 				.query("SELECT value FROM settings WHERE key = ?")
 				.get(key) as { value: string } | undefined;
-			const parsed = row ? Number(row.value) : Number.NaN;
-			if (Number.isFinite(parsed) && parsed >= 0) {
-				return { minAgeDays: parsed, source: "settings" };
-			}
+			const policy = row ? fromStored(row.value) : undefined;
+			if (policy) return policy;
 		} catch {
 			// settings table unavailable — fall through to env/default
 		}
 	}
-	const env = Number(process.env.PURGE_MIN_AGE_DAYS);
-	if (Number.isFinite(env) && env >= 0) {
-		return { minAgeDays: env, source: "env" };
-	}
-	return { minAgeDays: DEFAULT_MIN_AGE_DAYS, source: "default" };
-};
-
-export const setPolicy = (minAgeDays: number, fid?: number): PurgePolicy => {
-	if (!Number.isFinite(minAgeDays) || minAgeDays < 0) {
-		throw new Error(`invalid min_age_days: ${minAgeDays}`);
-	}
-	const key = fid !== undefined ? `${MIN_AGE_KEY}:${fid}` : MIN_AGE_KEY;
-	getDb()
-		.prepare(
-			"INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-		)
-		.run(key, String(minAgeDays), Date.now());
-	return { minAgeDays, source: "settings" };
+	return fromEnv() ?? { minAgeDays: DEFAULT_MIN_AGE_DAYS, source: "default" };
 };

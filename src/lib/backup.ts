@@ -10,10 +10,11 @@ import { join, resolve } from "node:path";
 import { fromFarcasterTime, Message, MessageData } from "@farcaster/core";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { cluster } from "radash";
+import { defaultRunContext, type RunContext } from "../ctx";
 import { getCastFromHash } from "../jobs/read";
 import { renderCast } from "../jobs/write";
-import { ARCHIVER_FID } from "./config";
-import { getDb } from "./db";
+import { ARCHIVER_FID } from "../lib/config";
+import type { RenderSink } from "../sink";
 import { hash2filename, normalizeHash } from "./helpers";
 import {
 	renderEmbedsAsync,
@@ -277,12 +278,16 @@ export const castFromBackupMessage = (msg: SnapMessage): Cast => {
  * rebuilt from the backup proto and rendered directly into out/ (they are
  * tombstoned, so castsLoop skips them — the file is written here, once).
  */
-export const selfHealFromBackups = async (outDir = "out"): Promise<number> => {
+export const selfHealFromBackups = async (
+	outDir = "out",
+	ctx: RunContext = defaultRunContext(),
+): Promise<number> => {
 	const entries = readManifest().filter((entry) => entry.fid === ARCHIVER_FID);
 	if (entries.length === 0) return 0;
 	const missing: ManifestEntry[] = [];
 	for (const entry of entries) {
-		if (!(await getCastFromHash(entry.hash, undefined))) missing.push(entry);
+		if (!(await getCastFromHash(entry.hash, undefined, ctx)))
+			missing.push(entry);
 	}
 	if (missing.length === 0) return 0;
 	console.log(
@@ -290,7 +295,10 @@ export const selfHealFromBackups = async (outDir = "out"): Promise<number> => {
 	);
 
 	// Live casts: existing Neynar path inserts the row (and auto-tombstones absent ones).
-	const unfetched = missing.filter((entry) => !isTombstoned(entry.hash));
+	const unfetched: ManifestEntry[] = [];
+	for (const entry of missing) {
+		if (!(await ctx.data.isDeleted(entry.hash))) unfetched.push(entry);
+	}
 	for (const chunk of cluster(
 		unfetched.map((entry) => entry.hash),
 		25,
@@ -301,7 +309,7 @@ export const selfHealFromBackups = async (outDir = "out"): Promise<number> => {
 	// Purged casts: rebuild from the backup proto and render once.
 	let healed = 0;
 	for (const entry of missing) {
-		if (await getCastFromHash(entry.hash, undefined)) continue; // live path succeeded
+		if (await getCastFromHash(entry.hash, undefined, ctx)) continue; // live path succeeded
 		const backup = readBackupFiles(entry.hash);
 		if (!backup) {
 			console.error(
@@ -310,8 +318,12 @@ export const selfHealFromBackups = async (outDir = "out"): Promise<number> => {
 			continue;
 		}
 		const cast = castFromBackupMessage(backup.json);
-		insertHealedRow(entry, cast);
-		await renderHealedFile(entry, cast, outDir);
+		await ctx.data.restoreTombstonedCast(
+			cast,
+			"restored from backup",
+			Date.now(),
+		);
+		await renderHealedFile(entry, cast, ctx.out(outDir), ctx);
 		healed += 1;
 	}
 	if (healed > 0)
@@ -319,63 +331,35 @@ export const selfHealFromBackups = async (outDir = "out"): Promise<number> => {
 	return healed;
 };
 
-const isTombstoned = (hash: string): boolean =>
-	!!getDb()
-		.query("SELECT 1 as one FROM deleted_casts WHERE hash = ?")
-		.get(normalizeHash(hash));
-
-const insertHealedRow = (entry: ManifestEntry, cast: Cast): void => {
-	const db = getDb();
-	db.prepare(
-		"INSERT INTO casts (hash, fid, data, parent_fid, parent_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-	).run(
-		normalizeHash(entry.hash),
-		cast.author?.fid ?? entry.fid,
-		JSON.stringify(cast),
-		cast.parent_author?.fid,
-		cast.parent_hash ? normalizeHash(cast.parent_hash) : null,
-	);
-	if (!isTombstoned(entry.hash)) {
-		db.prepare(
-			"INSERT OR IGNORE INTO deleted_casts (hash, deleted_at, reason) VALUES (?, ?, ?)",
-		).run(normalizeHash(entry.hash), Date.now(), "restored from backup");
-	}
-};
-
 const renderHealedFile = async (
 	entry: ManifestEntry,
 	cast: Cast,
-	healOutDir = "out",
+	sink: RenderSink,
+	ctx: RunContext,
 ): Promise<void> => {
-	const username = getUsername(entry.fid);
-	const userDir = resolve(healOutDir, username);
-	mkdirSync(userDir, { recursive: true });
-	const path = join(userDir, hash2filename(entry.hash, cast.timestamp));
-	if (existsSync(path)) return; // never rewrite
-	const rendered = await renderCast(cast);
-	const replyCount = countHealedReplies(entry.hash);
-	const embedBlock = await renderEmbedsAsync(cast.embeds ?? []);
+	const username = await getUsername(entry.fid, ctx);
+	const relPath = `${username}/${hash2filename(entry.hash, cast.timestamp)}`;
+	if (await sink.has(relPath)) return; // never rewrite
+	const rendered = await renderCast(cast, ctx);
+	const replyCount = await countHealedReplies(entry.hash, ctx);
+	const embedBlock = await renderEmbedsAsync(cast.embeds ?? [], ctx);
 	const body = [
 		rendered.parent_hash
-			? await renderReplyHeader(cast)
-			: await renderTopLevelHeader(cast),
+			? await renderReplyHeader(cast, ctx)
+			: await renderTopLevelHeader(cast, ctx),
 		"--",
 		rendered.text + (embedBlock ? `\n\n${embedBlock}` : ""),
 		renderReplyFooter(replyCount),
 	].join("\n");
-	writeFileSync(path, body.trim());
+	await sink.write(relPath, body.trim());
 };
 
-const getUsername = (fid: number): string => {
-	const user = getDb()
-		.query("SELECT username FROM users WHERE fid = ?")
-		.get(fid) as { username: string | null } | undefined;
+const getUsername = async (fid: number, ctx: RunContext): Promise<string> => {
+	const user = await ctx.data.getUser(fid);
 	return user?.username ?? `fid:${fid}`;
 };
 
-const countHealedReplies = (hash: string): number => {
-	const row = getDb()
-		.query("SELECT count(1) as count FROM casts WHERE parent_hash = ?")
-		.get(normalizeHash(hash)) as { count: number } | undefined;
-	return row?.count ?? 0;
-};
+const countHealedReplies = async (
+	hash: string,
+	ctx: RunContext,
+): Promise<number> => ctx.data.countReplies(ARCHIVER_FID, hash);

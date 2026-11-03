@@ -117,7 +117,7 @@ beforeEach(() => {
 });
 
 describe("computeCandidates", () => {
-	test("live − likes − tombstones − too-young", () => {
+	test("live − likes − tombstones − too-young", async () => {
 		process.env.PURGE_MIN_AGE_DAYS = "7";
 		snapchainMock.castsByFid = [
 			fixtureOld.snap,
@@ -128,7 +128,7 @@ describe("computeCandidates", () => {
 			likes: new Set([fixtureLiked.hashHex]),
 			recasts: new Set<string>(),
 		};
-		const { candidates, liveHashes } = computeCandidates(
+		const { candidates, liveHashes } = await computeCandidates(
 			snapchainMock.castsByFid,
 			reactions,
 		);
@@ -141,7 +141,7 @@ describe("computeCandidates", () => {
 			[fixtureOld.hashHex],
 			"self-purge (not liked by owner)",
 		);
-		const { candidates } = computeCandidates([fixtureOld.snap], {
+		const { candidates } = await computeCandidates([fixtureOld.snap], {
 			likes: new Set(),
 			recasts: new Set(),
 		});

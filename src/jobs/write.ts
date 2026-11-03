@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { defaultRunContext, type RunContext } from "../ctx";
 import { hash2filename, normalizeHash, pluralize } from "../lib/helpers";
@@ -130,11 +129,7 @@ export const fidsLoop = async (
 	outDir: string = OUT_DIR,
 	ctx: RunContext = defaultRunContext(),
 ) => {
-	const usersDir = `${outDir}/_users_`;
-	if (!fs.existsSync(usersDir)) {
-		fs.mkdirSync(usersDir, { recursive: true });
-	}
-
+	const sink = ctx.out(outDir);
 	const fids = await ctx.data.listUserFids();
 	console.log(pluralize(fids.length, "fid"));
 
@@ -143,18 +138,17 @@ export const fidsLoop = async (
 		if (!user) {
 			continue;
 		}
-		const userPath = `${usersDir}/${user.username}.md`;
-		if (fs.existsSync(userPath)) {
+		const userRelPath = `_users_/${user.username}.md`;
+		if (await sink.has(userRelPath)) {
 			continue;
 		}
 
-		console.log("writing user to", userPath);
-		fs.writeFileSync(userPath, await renderUserHeader(fid, ctx));
+		console.log("writing user to", `${outDir}/${userRelPath}`);
 		const userCastHashes = await ctx.data.listCastHashesByFid(user.fid);
-		fs.appendFileSync(
-			userPath,
-			`\n---\n${userCastHashes.map((h) => h.replace(/^0x/, "")).join("\n")}`,
-		);
+		const content =
+			(await renderUserHeader(fid, ctx)) +
+			`\n---\n${userCastHashes.map((h) => h.replace(/^0x/, "")).join("\n")}`;
+		await sink.write(userRelPath, content);
 	}
 };
 
@@ -162,6 +156,7 @@ export const castsLoop = async (
 	outDir: string = OUT_DIR,
 	ctx: RunContext = defaultRunContext(),
 ) => {
+	const sink = ctx.out(outDir);
 	const casts = await ctx.data.listCasts();
 	console.log(pluralize(casts.length, "cast"));
 
@@ -175,16 +170,11 @@ export const castsLoop = async (
 		}
 		const hydratedCast = await getCastOrLog(hash, fid, ctx);
 		if (!hydratedCast) continue;
-		// create /out/user.username subdirectory if it doesn't exist yet
-		const userSubdir = `${outDir}/${user.username}`;
-		if (!fs.existsSync(userSubdir)) {
-			fs.mkdirSync(userSubdir, { recursive: true });
-		}
 
-		const castPath = `${userSubdir}/${hash2filename(hash, hydratedCast.timestamp)}`;
-		const embedBlock = await renderEmbedsAsync(hydratedCast.embeds ?? []);
-		if (fs.existsSync(castPath)) {
-			const existing = fs.readFileSync(castPath, "utf8");
+		const castRelPath = `${user.username}/${hash2filename(hash, hydratedCast.timestamp)}`;
+		const embedBlock = await renderEmbedsAsync(hydratedCast.embeds ?? [], ctx);
+		const existing = await sink.read(castRelPath);
+		if (existing !== null) {
 			const needsRewrite =
 				existing.includes("<deleted>") ||
 				embedsMissingFromFile(existing, hydratedCast.embeds ?? [], embedBlock);
@@ -196,13 +186,13 @@ export const castsLoop = async (
 				continue;
 			}
 		}
-		console.log("writing cast to", castPath);
+		console.log("writing cast to", `${outDir}/${castRelPath}`);
 		const renderedCast = await renderCast(hydratedCast, ctx);
 		const replyCount = await ctx.data.countReplies(fid, hash);
 
 		// write
-		fs.writeFileSync(
-			castPath,
+		await sink.write(
+			castRelPath,
 			`
 ${renderedCast.parent_hash ? await renderReplyHeader(hydratedCast, ctx) : await renderTopLevelHeader(hydratedCast, ctx)}
 --

@@ -1,7 +1,12 @@
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { getDb } from "../lib/db";
 import { normalizeHash, quoteHashes, type User } from "../lib/helpers";
-import type { ArchiveData, CastRef } from "./types";
+import type {
+	ArchiveData,
+	CastRef,
+	DeletedEntry,
+	ReactionEntry,
+} from "./types";
 
 /**
  * bun:sqlite ArchiveData — the SQL moved verbatim out of jobs/read.ts so the
@@ -202,6 +207,104 @@ WHERE NOT EXISTS (SELECT 1 FROM casts c WHERE c.hash = cast_quotes.quoted_hash)
 		return (
 			getDb().query("SELECT fid FROM users").all() as { fid: number }[]
 		).map((row) => row.fid);
+	}
+
+	async listDeleted(): Promise<DeletedEntry[]> {
+		return (
+			getDb()
+				.query(
+					"SELECT hash, reason, deleted_at FROM deleted_casts ORDER BY deleted_at DESC",
+				)
+				.all() as { hash: string; reason: string; deleted_at: number }[]
+		).map((row) => ({
+			hash: row.hash,
+			reason: row.reason,
+			deletedAt: row.deleted_at,
+		}));
+	}
+
+	async unmarkDeleted(hash: string): Promise<void> {
+		getDb()
+			.prepare("DELETE FROM deleted_casts WHERE hash = ?")
+			.run(normalizeHash(hash));
+	}
+
+	async restoreTombstonedCast(
+		cast: Cast,
+		reason: string,
+		deletedAt: number,
+	): Promise<void> {
+		const db = getDb();
+		const normalizedHash = normalizeHash(cast.hash);
+		const normalizedParentHash = cast.parent_hash
+			? normalizeHash(cast.parent_hash)
+			: cast.parent_hash;
+		const tx = db.transaction(() => {
+			db.prepare(
+				"INSERT INTO casts (hash, fid, data, parent_fid, parent_hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+			).run(
+				normalizedHash,
+				cast.author?.fid ?? 0,
+				JSON.stringify(cast),
+				cast.parent_author?.fid,
+				normalizedParentHash,
+			);
+			db.prepare(
+				"INSERT OR IGNORE INTO deleted_casts (hash, deleted_at, reason) VALUES (?, ?, ?)",
+			).run(normalizedHash, deletedAt, reason);
+		});
+		tx();
+	}
+
+	async upsertReactions(fid: number, entries: ReactionEntry[]): Promise<void> {
+		if (entries.length === 0) return;
+		// self_reactions predates multi-fid: the table has no fid column (all
+		// rows belong to the single archived fid). The store backend keys by fid.
+		void fid;
+		const db = getDb();
+		const upsert = db.prepare(
+			"INSERT INTO self_reactions (target_hash, type, updated_at) VALUES (?, ?, ?) ON CONFLICT(target_hash, type) DO UPDATE SET updated_at = excluded.updated_at",
+		);
+		const tx = db.transaction((rows: ReactionEntry[]) => {
+			for (const entry of rows) {
+				upsert.run(normalizeHash(entry.hash), entry.type, entry.updatedAt);
+			}
+		});
+		tx(entries);
+	}
+
+	async deleteReactionsNotIn(
+		fid: number,
+		keys: { hash: string; type: string }[],
+	): Promise<void> {
+		void fid;
+		const db = getDb();
+		if (keys.length === 0) {
+			db.prepare("DELETE FROM self_reactions").run();
+			return;
+		}
+		const keepKeys = keys.map(
+			(key) => `${normalizeHash(key.hash)}#${key.type}`,
+		);
+		const placeholders = keepKeys.map(() => "?").join(", ");
+		db.prepare(
+			`DELETE FROM self_reactions WHERE (target_hash || '#' || type) NOT IN (${placeholders})`,
+		).run(...keepKeys);
+	}
+
+	async getSetting(key: string): Promise<string | undefined> {
+		const row = getDb()
+			.query("SELECT value FROM settings WHERE key = ?")
+			.get(key) as { value: string } | undefined;
+		return row?.value;
+	}
+
+	async setSetting(key: string, value: string): Promise<void> {
+		getDb()
+			.prepare(
+				"INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+			)
+			.run(key, value, Date.now());
 	}
 }
 

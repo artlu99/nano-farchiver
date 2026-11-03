@@ -8,6 +8,8 @@ import {
 	ReactionType,
 } from "@farcaster/core";
 import invariant from "tiny-invariant";
+import { defaultRunContext, type RunContext } from "../ctx";
+import type { ReactionEntry } from "../data/types";
 import {
 	backupMessage,
 	checkpoint,
@@ -16,7 +18,6 @@ import {
 	readManifest,
 } from "../lib/backup";
 import { ARCHIVER_FID, getPolicy } from "../lib/config";
-import { getDb } from "../lib/db";
 import { normalizeHash } from "../lib/helpers";
 import type { SnapMessage } from "../lib/snapchain";
 import {
@@ -69,27 +70,34 @@ export const ageDaysOf = (message: SnapMessage): number | null => {
  * Survivors get upserted; rows not touched this run are deleted (staleness =
  * an unlike). Returns the like/recast keep-sets (normalized hashes).
  */
-export const refreshSelfReactions = async (): Promise<ReactionSets> => {
-	const db = getDb();
+export const refreshSelfReactions = async (
+	ctx: RunContext = defaultRunContext(),
+): Promise<ReactionSets> => {
 	const startedAt = Date.now();
 	const likes = new Set<string>();
 	const recasts = new Set<string>();
-	const upsert = db.prepare(
-		"INSERT INTO self_reactions (target_hash, type, updated_at) VALUES (?, ?, ?) ON CONFLICT(target_hash, type) DO UPDATE SET updated_at = excluded.updated_at",
-	);
+	const touched: ReactionEntry[] = [];
 	const collect = async (type: "Like" | "Recast", target: Set<string>) => {
 		for (const msg of await snapReactionsByFid(ARCHIVER_FID, type)) {
 			const targetHash = msg.data?.reactionBody?.targetCastId?.hash;
 			if (!targetHash) continue;
 			const normalized = normalizeHash(targetHash);
 			target.add(normalized);
-			upsert.run(normalized, type.toLowerCase(), startedAt);
+			touched.push({
+				hash: normalized,
+				type: type.toLowerCase(),
+				updatedAt: startedAt,
+			});
 		}
 	};
 	await collect("Like", likes);
 	const recastKeeps = process.env.PURGE_RECAST_KEEPS === "1";
 	if (recastKeeps) await collect("Recast", recasts);
-	db.prepare("DELETE FROM self_reactions WHERE updated_at < ?").run(startedAt);
+	await ctx.data.upsertReactions(ARCHIVER_FID, touched);
+	await ctx.data.deleteReactionsNotIn(
+		ARCHIVER_FID,
+		touched.map((entry) => ({ hash: entry.hash, type: entry.type })),
+	);
 	console.log(
 		`like-set: ${likes.size} like(s)${recastKeeps ? `, ${recasts.size} recast(s)` : ""}`,
 	);
@@ -99,18 +107,19 @@ export const refreshSelfReactions = async (): Promise<ReactionSets> => {
 export const fetchLiveCasts = async (): Promise<SnapMessage[]> =>
 	snapCastsByFid(ARCHIVER_FID);
 
-export const computeCandidates = (
+export const computeCandidates = async (
 	live: SnapMessage[],
 	reactions: ReactionSets,
-): { candidates: Candidate[]; liveHashes: string[] } => {
-	const policy = getPolicy();
+	ctx: RunContext = defaultRunContext(),
+): Promise<{ candidates: Candidate[]; liveHashes: string[] }> => {
+	const policy = await getPolicy();
 	const candidates: Candidate[] = [];
 	const liveHashes: string[] = [];
 	for (const msg of live) {
 		const hash = normalizeHash(msg.hash ?? "");
 		liveHashes.push(hash);
 		if (reactions.likes.has(hash) || reactions.recasts.has(hash)) continue;
-		if (isTombstoned(hash)) continue;
+		if (await ctx.data.isDeleted(hash)) continue;
 		const age = ageDaysOf(msg);
 		if (age === null || age < policy.minAgeDays) continue;
 		candidates.push({
@@ -128,12 +137,6 @@ export const computeCandidates = (
 	return { candidates, liveHashes };
 };
 
-// Explicit db access here (read.ts's isCastDeleted has the same shape).
-const isTombstoned = (hash: string): boolean =>
-	!!getDb()
-		.query("SELECT 1 as one FROM deleted_casts WHERE hash = ?")
-		.get(hash);
-
 /**
  * Crash recovery, derived from protocol + tombstones + files:
  * finish (tombstoned+live+unliked ⇒ re-submit), release (tombstoned+live+liked ⇒
@@ -143,19 +146,19 @@ export const applyResumeRules = async (
 	liveHashes: string[],
 	reactions: ReactionSets,
 	live: boolean,
+	ctx: RunContext = defaultRunContext(),
 ): Promise<{ finished: number; released: number }> => {
-	const db = getDb();
 	const liveSet = new Set(liveHashes);
-	const tombstoned = db
-		.query("SELECT hash FROM deleted_casts WHERE reason LIKE 'self-purge%'")
-		.all() as { hash: string }[];
+	const tombstoned = (await ctx.data.listDeleted()).filter((entry) =>
+		entry.reason.startsWith("self-purge"),
+	);
 	let finished = 0;
 	let released = 0;
 	for (const { hash } of tombstoned) {
 		const normalized = normalizeHash(hash);
 		if (!liveSet.has(normalized)) continue; // settled
 		if (reactions.likes.has(normalized) || reactions.recasts.has(normalized)) {
-			db.prepare("DELETE FROM deleted_casts WHERE hash = ?").run(normalized);
+			await ctx.data.unmarkDeleted(normalized);
 			console.log(
 				`resume: released ${normalized} (liked again — protocol wins)`,
 			);
@@ -298,9 +301,11 @@ export interface RunResult {
 export const purgeRun = async (options: {
 	live: boolean;
 	batchN?: number;
+	ctx?: RunContext;
 }): Promise<RunResult> => {
 	const { live, batchN } = options;
-	const reactions = await refreshSelfReactions();
+	const ctx = options.ctx ?? defaultRunContext();
+	const reactions = await refreshSelfReactions(ctx);
 	const liveMsgs = await fetchLiveCasts();
 	console.log(`live casts: ${liveMsgs.length}`);
 
@@ -308,18 +313,22 @@ export const purgeRun = async (options: {
 		liveMsgs.map((msg) => normalizeHash(msg.hash)),
 		reactions,
 		live,
+		ctx,
 	);
 
-	const { candidates, liveHashes } = computeCandidates(liveMsgs, reactions);
+	const { candidates, liveHashes } = await computeCandidates(
+		liveMsgs,
+		reactions,
+		ctx,
+	);
 
 	// Preflight containment: candidates ⊆ live ⊆ archive. castsByFid can list
 	// phantom hashes (shard replica lag) — re-check each drifted hash via
 	// castById; true 404s are tombstoned, still-live unarchived casts abort.
-	const db = getDb();
-	const drift = liveHashes.filter((hash) => {
-		const row = db.query("SELECT 1 as one FROM casts WHERE hash = ?").get(hash);
-		return !row;
-	});
+	const drift: string[] = [];
+	for (const hash of liveHashes) {
+		if (!(await ctx.data.hasCast(hash))) drift.push(hash);
+	}
 	const realDrift: string[] = [];
 	for (const hash of drift) {
 		const raw = await snapCastById(ARCHIVER_FID, hash);
@@ -354,7 +363,7 @@ export const purgeRun = async (options: {
 
 	const delayMs = Number(process.env.PURGE_DELAY_MS ?? 1000);
 	for (const candidate of batch) {
-		const gate = await gateFromDisk(candidate.hash);
+		const gate = await gateFromDisk(candidate.hash, ctx);
 		if (!gate.ok) {
 			// No valid backup: back up now from the live message, then gate again.
 			const raw = await snapCastById(ARCHIVER_FID, candidate.hash);
@@ -365,7 +374,7 @@ export const purgeRun = async (options: {
 				continue;
 			}
 			backupMessage(raw);
-			const regate = await gateFromDisk(candidate.hash);
+			const regate = await gateFromDisk(candidate.hash, ctx);
 			if (!regate.ok) {
 				console.error(
 					`gate FAILED for ${candidate.hash}: ${regate.error} — no delete`,
@@ -388,7 +397,7 @@ export const purgeRun = async (options: {
 
 		// Age re-check against the CURRENT policy (mid-run changes apply);
 		// age only grows between selection and here, so the stored value is the floor.
-		const policy = getPolicy();
+		const policy = await getPolicy();
 		if (candidate.age_days < policy.minAgeDays) {
 			console.log(`skipped (age policy): ${candidate.hash}`);
 			result.skipped += 1;
@@ -503,35 +512,35 @@ export const verifyBackups = async (
 // Review-UI helpers (imported by server.ts)
 // ---------------------------------------------------------------------------
 
-export const candidatesForReview = async (page: number, perPage: number) => {
-	const all = await refreshCandidates();
+export const candidatesForReview = async (
+	page: number,
+	perPage: number,
+	ctx: RunContext = defaultRunContext(),
+) => {
+	const all = await refreshCandidates(false, ctx);
 	const start = (page - 1) * perPage;
 	return {
 		candidates: all.slice(start, start + perPage),
 		page,
 		total: all.length,
 		total_pages: Math.max(1, Math.ceil(all.length / perPage)),
-		policy: getPolicy(),
+		policy: await getPolicy(),
 	};
 };
 
-export const deletedLedger = (page: number, perPage: number) => {
-	const db = getDb();
-	const total = (
-		db.query("SELECT count(1) as n FROM deleted_casts").get() as { n: number }
-	).n;
-	const rows = db
-		.query(
-			"SELECT hash, deleted_at, reason FROM deleted_casts ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
-		)
-		.all(perPage, (page - 1) * perPage) as {
-		hash: string;
-		deleted_at: number;
-		reason: string;
-	}[];
+export const deletedLedger = async (
+	page: number,
+	perPage: number,
+	ctx: RunContext = defaultRunContext(),
+) => {
+	const all = await ctx.data.listDeleted();
+	const total = all.length;
+	const rows = all.slice((page - 1) * perPage, (page - 1) * perPage + perPage);
 	return {
 		deleted: rows.map((row) => ({
-			...row,
+			hash: row.hash,
+			deleted_at: row.deletedAt,
+			reason: row.reason,
 			backed_up: readBackupFiles(row.hash) !== null,
 		})),
 		page,
@@ -541,7 +550,10 @@ export const deletedLedger = (page: number, perPage: number) => {
 };
 
 /** Live single-cast delete from the review UI: full gate, checkpoint, tombstone, submit. */
-export const deleteOne = async (hash: string): Promise<void> => {
+export const deleteOne = async (
+	hash: string,
+	ctx: RunContext = defaultRunContext(),
+): Promise<void> => {
 	await ensureLivePreconditions();
 	const normalized = normalizeHash(hash);
 	const raw = await snapCastById(ARCHIVER_FID, normalized);
@@ -550,7 +562,7 @@ export const deleteOne = async (hash: string): Promise<void> => {
 		return;
 	}
 	if (!readBackupFiles(normalized)) backupMessage(raw);
-	const gate = await gateFromDisk(normalized);
+	const gate = await gateFromDisk(normalized, ctx);
 	if (!gate.ok) throw new Error(`gate failed: ${gate.error}`);
 	await submitDelete(normalized);
 };
@@ -558,8 +570,9 @@ export const deleteOne = async (hash: string): Promise<void> => {
 /** Verify+backup up to `limit` candidates (review UI "Backup+verify all"). */
 export const verifyAll = async (
 	limit: number,
+	ctx: RunContext = defaultRunContext(),
 ): Promise<{ verified: number; remaining: number; failed: number }> => {
-	const all = await refreshCandidates(true);
+	const all = await refreshCandidates(true, ctx);
 	const unbacked = all.filter((c) => !c.backed_up);
 	let verified = 0;
 	let failed = 0;
@@ -567,7 +580,7 @@ export const verifyAll = async (
 		const raw = await snapCastById(ARCHIVER_FID, candidate.hash);
 		if (!raw) continue;
 		backupMessage(raw);
-		const gate = await gateFromDisk(candidate.hash);
+		const gate = await gateFromDisk(candidate.hash, ctx);
 		if (gate.ok) verified += 1;
 		else failed += 1;
 	}
@@ -585,6 +598,7 @@ const CANDIDATES_TTL_MS = 5 * 60 * 1000;
 
 export const refreshCandidates = async (
 	force = false,
+	ctx: RunContext = defaultRunContext(),
 ): Promise<Candidate[]> => {
 	if (
 		!force &&
@@ -593,9 +607,9 @@ export const refreshCandidates = async (
 	) {
 		return candidatesCache.candidates;
 	}
-	const reactions = await refreshSelfReactions();
+	const reactions = await refreshSelfReactions(ctx);
 	const liveMsgs = await fetchLiveCasts();
-	const candidates = computeCandidates(liveMsgs, reactions).candidates;
+	const { candidates } = await computeCandidates(liveMsgs, reactions, ctx);
 	candidatesCache = { at: Date.now(), candidates };
 	return candidates;
 };

@@ -14,11 +14,13 @@ import {
 	tagCast,
 	tagCasts,
 } from "../jobs/read";
-import { normalizeHash } from "../lib/helpers";
+import { castsLoop } from "../jobs/write";
+import { hash2filename, normalizeHash } from "../lib/helpers";
 import {
 	castKey,
 	deletedKey,
 	getJSON,
+	listAllKeys,
 	loadIndex,
 	userKey,
 } from "../store/indexModel";
@@ -230,5 +232,84 @@ describe("listings (store-backed)", () => {
 			expect(await ctx.data.listCastHashesByFid(ref.fid)).toContain(ref.hash);
 		}
 		expect(await ctx.data.listUserFids()).toEqual([3319217]);
+	});
+});
+
+describe("tombstone ledger + heal (store-backed)", () => {
+	test("listDeleted is newest-first; unmarkDeleted releases", async () => {
+		const first = makeHash();
+		const second = makeHash();
+		await markCastsDeleted([first], "test", 1000, ctx);
+		await markCastsDeleted(
+			[second],
+			"self-purge (not liked by owner)",
+			2000,
+			ctx,
+		);
+		const ledger = await ctx.data.listDeleted();
+		expect(ledger.map((entry) => entry.hash)).toEqual([second, first]);
+		expect(ledger[0]?.reason).toBe("self-purge (not liked by owner)");
+
+		await ctx.data.unmarkDeleted(second);
+		expect(await ctx.data.listDeleted()).toHaveLength(1);
+		expect(await store.get(deletedKey(second))).toBeNull();
+	});
+
+	test("restoreTombstonedCast stores cast + tombstone, idempotently", async () => {
+		const cast = makeCast();
+		await ctx.data.restoreTombstonedCast(cast, "restored from backup", 5000);
+		expect(await getJSON<Cast>(store, castKey(cast.hash))).toEqual(cast);
+		expect(await getJSON(store, deletedKey(cast.hash))).toMatchObject({
+			reason: "restored from backup",
+		});
+		const idx = await index();
+		expect(idx?.casts[normalizeHash(cast.hash)]).toBeDefined();
+		expect(idx?.deleted[normalizeHash(cast.hash)]).toBeDefined();
+
+		// re-heal does not duplicate or resurrect differently
+		await ctx.data.restoreTombstonedCast(cast, "restored from backup", 6000);
+		expect(await ctx.data.listDeleted()).toHaveLength(1);
+	});
+
+	test("castsLoop renders through the store sink", async () => {
+		const parent = makeCast();
+		await tagCasts([parent], ctx);
+		await castsLoop("ignored-by-store-sink", ctx);
+		const rel = `artlu/${hash2filename(parent.hash, parent.timestamp)}`;
+		const obj = await store.get(`out/${rel}`);
+		expect(obj).not.toBeNull();
+		expect(obj && new TextDecoder().decode(obj.body)).toContain("hello");
+		// second run: no rewrite (skip-if-rendered read path)
+		const before = obj?.etag;
+		await castsLoop("ignored-by-store-sink", ctx);
+		expect((await store.get(`out/${rel}`))?.etag).toBe(before);
+	});
+});
+
+describe("reactions + settings (store-backed)", () => {
+	test("upsert + full-refresh delete of stale keys, fid-scoped", async () => {
+		await ctx.data.upsertReactions(3319217, [
+			{ hash: "0xaaa1", type: "like", updatedAt: 1 },
+			{ hash: "0xbbb2", type: "like", updatedAt: 2 },
+		]);
+		await ctx.data.upsertReactions(42, [
+			{ hash: "0xaaa1", type: "like", updatedAt: 3 },
+		]);
+		// new run touches only 0xaaa1 → 0xbbb2 goes stale for this fid,
+		// fid 42's like is untouched (fid-scoped keys)
+		await ctx.data.deleteReactionsNotIn(3319217, [
+			{ hash: "0xaaa1", type: "like" },
+		]);
+		const keys = await listAllKeys(store, "reactions/");
+		expect(keys).toContain("reactions/3319217/aaa1#like.json");
+		expect(keys).toContain("reactions/42/aaa1#like.json");
+		expect(keys).not.toContain("reactions/3319217/bbb2#like.json");
+	});
+
+	test("getSetting/setSetting roundtrip", async () => {
+		await ctx.data.setSetting("purge_min_age_days", "30");
+		expect(await ctx.data.getSetting("purge_min_age_days")).toBe("30");
+		await ctx.data.setSetting("purge_min_age_days:42", "3");
+		expect(await ctx.data.getSetting("purge_min_age_days:42")).toBe("3");
 	});
 });
