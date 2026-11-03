@@ -187,8 +187,9 @@ Self-heal from `backups/` stays a step in the run, parameterized per fid
 - x402: not part of `archiver` (piece 1's concern).
 - **Purge/backup CLI stays on Bun** (`src/jobs/purge.ts` subcommands) against the
   same bucket via the shared store — no need to HTTP-ify it now. Offsite sync
-  (`Bun.$` git/rsync) becomes: bucket versioning ON + periodic copy to a second
-  bucket (CLI or cron); `CHECKPOINT.json` gate logic unchanged (sha256 of
+  (`Bun.$` git/rsync) becomes: a periodic second-bucket copy
+  (`scripts/sync-buckets.ts`, any S3-compatible provider) — POSTPONED
+  (2026-11-03); `CHECKPOINT.json` gate logic unchanged (sha256 of
   `manifest.jsonl` bytes).
 
 ### 5.4 Config
@@ -309,8 +310,9 @@ Progress (2026-11-03):
    tests pass against `MemoryStore`. *(Store layer + import script are done;
    the `RunContext`/fid refactor of `src/jobs` remains.)*
 2. **Import.** `scripts/import-to-s3.ts`: SQLite rows → objects + index; `out/`
-   byte-identical paths; `backups/`; textfilters. Versioning ON from day one.
-   VPS keeps running off local SQLite (no shared state yet).
+   byte-identical paths; `backups/`; textfilters. Versioning was planned but
+   R2 (and Garage) do not support it — accepted (see §10.9). VPS keeps
+   running off local SQLite (no shared state yet).
 3. **`archiver` live.** Deploy piece 2 (Bun process first — easiest to debug;
    Worker+cron when stable). **Single-writer flips here** (disable VPS `doIt`).
    Soak: compare index vs SQLite; run the purge CLI dry against the bucket.
@@ -355,3 +357,19 @@ additive.
    the unauthenticated surface).
 6. **Which provider is primary?** R2 assumed for cost/egress; the import script and
    smoke tests make switching a re-run of stage 2 against new `S3_*` env.
+7. **Single-copy archive, no versioning (ACCEPTED RISK, 2026-11-03).** R2 and
+   Garage have no object versioning; second-bucket sync is postponed; local
+   sources (`db/queue.db3` + `out/` + `backups/`) will be RETIRED at cutover —
+   after that the bucket is the sole copy of `casts/` + `deleted/` (the
+   crown jewels: `out/`, `meta/index.json` and `quotes/` are rebuildable from
+   them; `backups/` is additionally git-offsite via the repo). Primary loss
+   modes are logical (a write bug), not hardware — mitigated by put-if-absent
+   discipline, the never-delete invariant (no delete paths exist for
+   `casts/*`/`out/*`), If-Match index commits and the single-writer rule.
+   Cheap future lever if this ever feels too thin: a scheduled snapshot of
+   `casts/` + `deleted/` into the git repo, or unpicking the postponed
+   `sync-buckets.ts` (script is ready; needs any second provider).
+8. **Lifecycle rules**: nothing required. R2's rule set (delete uploaded
+   objects / multipart abort / IA transition) contains no noncurrent-version
+   action (no versioning), and no rule may expire CURRENT objects —
+   never-delete invariant. Default multipart-abort stays; add nothing.
