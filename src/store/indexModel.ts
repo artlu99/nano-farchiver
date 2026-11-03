@@ -56,6 +56,16 @@ export interface RenderedEntry {
 	replyCount: number;
 }
 
+/** username → filename → render state (the skip-if-rendered map). */
+export type RenderedIndex = Record<string, Record<string, RenderedEntry>>;
+
+export interface RenderedEntryRef {
+	username: string;
+	filename: string;
+	embedsFp: string;
+	replyCount: number;
+}
+
 export interface FidRegistryIndexEntry {
 	active: boolean;
 	username?: string | null;

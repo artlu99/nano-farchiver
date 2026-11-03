@@ -1,5 +1,6 @@
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import type { User } from "../lib/helpers";
+import type { RenderedEntryRef, RenderedIndex } from "../store/indexModel";
 
 export interface CastRef {
 	hash: string;
@@ -91,4 +92,13 @@ export interface ArchiveData {
 	// --- settings (purge policy etc.) ---
 	getSetting(key: string): Promise<string | undefined>;
 	setSetting(key: string, value: string): Promise<void>;
+
+	// --- skip-if-rendered map ---
+	/**
+	 * The `rendered` map from the index. SQLite backend returns an empty map —
+	 * local-fs reads are cheap, so the render loop falls back to `sink.read`.
+	 */
+	listRendered(): Promise<RenderedIndex>;
+	/** Batch-update render state after writes (store backend: one index commit). */
+	markRendered(entries: RenderedEntryRef[]): Promise<void>;
 }

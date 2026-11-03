@@ -13,6 +13,8 @@ import {
 	loadIndex,
 	previewOf,
 	putJSON,
+	type RenderedEntryRef,
+	type RenderedIndex,
 	reactionKey,
 	settingKey,
 	userKey,
@@ -28,13 +30,31 @@ import type { ArchiveData, DeletedEntry, ReactionEntry } from "./types";
  */
 export class StoreArchiveData implements ArchiveData {
 	private readonly store: ArchiveStore;
+	/**
+	 * Per-instance index cache. The archiver is the single writer for the
+	 * duration of a run, so cached reads are authoritative; the TTL only
+	 * guards a future second writer. Every commit updates the cache.
+	 */
+	private cachedIndex: { index: ArchiveIndex; at: number } | undefined;
 
 	constructor(store: ArchiveStore) {
 		this.store = store;
 	}
 
 	private async readIndex(): Promise<ArchiveIndex> {
-		return (await loadIndex(this.store))?.index ?? emptyIndex();
+		if (
+			this.cachedIndex &&
+			Date.now() - this.cachedIndex.at < INDEX_CACHE_TTL_MS
+		) {
+			return this.cachedIndex.index;
+		}
+		const index = (await loadIndex(this.store))?.index ?? emptyIndex();
+		this.cachedIndex = { index, at: Date.now() };
+		return index;
+	}
+
+	private setCachedIndex(index: ArchiveIndex): void {
+		this.cachedIndex = { index, at: Date.now() };
 	}
 
 	async isDeleted(hash: string): Promise<boolean> {
@@ -62,11 +82,12 @@ export class StoreArchiveData implements ArchiveData {
 				// already tombstoned — ignore matches the SQLite semantics
 			}),
 		);
-		await commitIndex(this.store, (index) => {
+		const committed = await commitIndex(this.store, (index) => {
 			for (const hash of normalized) {
 				index.deleted[hash] = [reason, deletedAt];
 			}
 		});
+		this.setCachedIndex(committed);
 	}
 
 	async filterNotDeleted(hashes: string[]): Promise<string[]> {
@@ -205,7 +226,7 @@ export class StoreArchiveData implements ArchiveData {
 
 		// One index commit for the whole batch (last: reply-count bumps for
 		// parents already present — the live counter replaces countReplies SQL).
-		await commitIndex(this.store, (draft) => {
+		const committed = await commitIndex(this.store, (draft) => {
 			for (const { fid, username } of userEntries) {
 				draft.users[String(fid)] = { username };
 			}
@@ -237,6 +258,7 @@ export class StoreArchiveData implements ArchiveData {
 				if (parent) parent[4] += 1;
 			}
 		});
+		this.setCachedIndex(committed);
 	}
 
 	async getUser(fid: number): Promise<User | undefined> {
@@ -265,9 +287,10 @@ export class StoreArchiveData implements ArchiveData {
 	async unmarkDeleted(hash: string): Promise<void> {
 		const key = normalizeHash(hash);
 		await this.store.deleteKey(deletedKey(key));
-		await commitIndex(this.store, (draft) => {
+		const committed = await commitIndex(this.store, (draft) => {
 			delete draft.deleted[key];
 		});
+		this.setCachedIndex(committed);
 	}
 
 	async restoreTombstonedCast(
@@ -292,10 +315,11 @@ export class StoreArchiveData implements ArchiveData {
 		).catch(() => {
 			// already tombstoned
 		});
-		await commitIndex(this.store, (draft) => {
+		const committed = await commitIndex(this.store, (draft) => {
 			if (draft.casts[hash] === undefined) draft.casts[hash] = entry;
 			draft.deleted[hash] ??= [reason, deletedAt];
 		});
+		this.setCachedIndex(committed);
 	}
 
 	async upsertReactions(fid: number, entries: ReactionEntry[]): Promise<void> {
@@ -336,9 +360,26 @@ export class StoreArchiveData implements ArchiveData {
 			updated_at: Date.now(),
 		});
 	}
+
+	async listRendered(): Promise<RenderedIndex> {
+		return (await this.readIndex()).rendered;
+	}
+
+	async markRendered(entries: RenderedEntryRef[]): Promise<void> {
+		if (entries.length === 0) return;
+		const committed = await commitIndex(this.store, (draft) => {
+			for (const { username, filename, embedsFp, replyCount } of entries) {
+				const files = draft.rendered[username] ?? {};
+				files[filename] = { embedsFp, replyCount };
+				draft.rendered[username] = files;
+			}
+		});
+		this.setCachedIndex(committed);
+	}
 }
 
 const PUT_CONCURRENCY = 8;
+const INDEX_CACHE_TTL_MS = 60_000;
 
 /** Index tuple builder shared by tagCasts and restoreTombstonedCast. */
 const indexEntryFor = (cast: Cast): CastIndexEntry => {

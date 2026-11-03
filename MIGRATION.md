@@ -270,9 +270,13 @@ Progress (2026-11-03):
 - [x] **Backend flip switch**: `ARCHIVE_BACKEND=store bun run doIt` runs the
       whole pipeline (fetch → tag → heal → render) against the bucket; unset
       keeps SQLite + local `out/`. This is the stage-3 single-writer switch.
-- [ ] **Next:** create the R2 bucket + read-write token, set `S3_*` env, run the
-      real import (`bun run import:s3`), then `bun run verify:s3`; stand up the
-      read-only `web` piece against the bucket (stages 3–4).
+- [x] **R2 live + verified (stage 2 complete).** Bucket `nano-farchiver`
+      populated via `bun run import:s3`; `bun run verify:s3` passes all checks
+      against the live bucket (counts match local sources, verbatim cast
+      bytes, index sane, conditional-PUT probe PASS — R2 enforces If-Match).
+- [ ] **Next:** first store-backed archiver run (`ARCHIVE_BACKEND=store bun
+      run doIt`) as the stage-3 rehearsal; stand up the read-only `web` piece
+      against the bucket (stages 3–4).
 
 1. **Store + refactor (Bun-only, no behavior change).** `ArchiveStore` +
    `MemoryStore` + `S3Store`; `RunContext`; fid parameterization

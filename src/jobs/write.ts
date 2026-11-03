@@ -10,6 +10,8 @@ import {
 	renderUserHeader,
 } from "../lib/markdown";
 import { getUserFromShim } from "../lib/shim";
+import type { RenderedEntryRef } from "../store/indexModel";
+import { embedsFingerprint } from "../store/indexModel";
 import {
 	getUserFromFid,
 	hydrateQuotedCastEmbeds,
@@ -158,7 +160,12 @@ export const castsLoop = async (
 ) => {
 	const sink = ctx.out(outDir);
 	const casts = await ctx.data.listCasts();
+	const rendered = await ctx.data.listRendered();
 	console.log(pluralize(casts.length, "cast"));
+
+	// Render-state updates are batched into one index commit at the end.
+	const pendingRendered: RenderedEntryRef[] = [];
+	let written = 0;
 
 	for (const { fid, hash } of casts) {
 		// Tombstoned casts are never rendered or rewritten — their archived
@@ -171,14 +178,49 @@ export const castsLoop = async (
 		const hydratedCast = await getCastOrLog(hash, fid, ctx);
 		if (!hydratedCast) continue;
 
-		const castRelPath = `${user.username}/${hash2filename(hash, hydratedCast.timestamp)}`;
+		// original template-literal behavior: null username → "null" directory
+		const username = user.username ?? "null";
+		const filename = hash2filename(hash, hydratedCast.timestamp);
+		const castRelPath = `${username}/${filename}`;
+		const embedsFp = embedsFingerprint(hydratedCast.embeds ?? []);
+		const replyCount = await ctx.data.countReplies(fid, hash);
+
+		// Skip-if-rendered: a matching rendered entry (embeds fingerprint +
+		// reply count) means the file is current — no object GET needed.
+		// Safe because nothing writes `<deleted>` markers anymore, and the
+		// seeded out/ corpus contains none (verified: grep = 0).
+		const prior = rendered[username]?.[filename];
+		if (
+			prior &&
+			prior.embedsFp === embedsFp &&
+			prior.replyCount === replyCount
+		) {
+			continue;
+		}
+
 		const embedBlock = await renderEmbedsAsync(hydratedCast.embeds ?? [], ctx);
 		const existing = await sink.read(castRelPath);
 		if (existing !== null) {
+			// Store backend: a changed reply count means the footer is stale —
+			// re-render even though embeds are unchanged (closes the reply-count
+			// staleness gap). fs backend has no prior entry → old criteria only.
 			const needsRewrite =
 				existing.includes("<deleted>") ||
-				embedsMissingFromFile(existing, hydratedCast.embeds ?? [], embedBlock);
-			if (!needsRewrite) continue;
+				embedsMissingFromFile(
+					existing,
+					hydratedCast.embeds ?? [],
+					embedBlock,
+				) ||
+				(prior !== undefined && prior.replyCount !== replyCount);
+			if (!needsRewrite) {
+				pendingRendered.push({
+					username,
+					filename,
+					embedsFp,
+					replyCount,
+				});
+				continue;
+			}
 			if (
 				hydratedCast.parent_hash &&
 				(await isCastDeleted(hydratedCast.parent_hash, ctx))
@@ -187,8 +229,8 @@ export const castsLoop = async (
 			}
 		}
 		console.log("writing cast to", `${outDir}/${castRelPath}`);
+		written += 1;
 		const renderedCast = await renderCast(hydratedCast, ctx);
-		const replyCount = await ctx.data.countReplies(fid, hash);
 
 		// write
 		await sink.write(
@@ -203,7 +245,18 @@ ${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.chann
 
 `.trim(),
 		);
+		pendingRendered.push({
+			username,
+			filename,
+			embedsFp,
+			replyCount,
+		});
 	}
+
+	await ctx.data.markRendered(pendingRendered);
+	console.log(
+		`renders: ${written} written, ${pendingRendered.length - written} marked current, ${casts.length} scanned`,
+	);
 };
 
 const getCastOrLog = async (

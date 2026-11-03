@@ -1,6 +1,7 @@
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { getDb } from "../lib/db";
 import { normalizeHash, quoteHashes, type User } from "../lib/helpers";
+import type { RenderedEntryRef, RenderedIndex } from "../store/indexModel";
 import type {
 	ArchiveData,
 	CastRef,
@@ -305,6 +306,15 @@ WHERE NOT EXISTS (SELECT 1 FROM casts c WHERE c.hash = cast_quotes.quoted_hash)
 				"INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
 			)
 			.run(key, value, Date.now());
+	}
+
+	/** Local-fs renders are read directly by the render loop; no map needed. */
+	async listRendered(): Promise<RenderedIndex> {
+		return {};
+	}
+
+	async markRendered(_entries: RenderedEntryRef[]): Promise<void> {
+		// no-op: the SQLite backend checks renders via the fs sink
 	}
 }
 
