@@ -33,6 +33,14 @@ export const backupJsonKey = (hash: string): string =>
 export const backupManifestKey = "backups/manifest.jsonl";
 export const backupCheckpointKey = "backups/CHECKPOINT.json";
 export const textfiltersKey = "config/textfilters.jsonl";
+export const runStatusKey = "meta/run-status.json";
+
+/** Last-writer-wins progress object for the /runs live view (no If-Match). */
+export const writeRunStatus = (
+	store: ArchiveStore,
+	progress: unknown,
+): Promise<PutResult> =>
+	store.put(runStatusKey, JSON.stringify(progress));
 export const cursorKey = (fid: number): string => `meta/cursor/${fid}.json`;
 
 // ---------------------------------------------------------------------------

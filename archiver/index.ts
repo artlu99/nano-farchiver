@@ -1,6 +1,11 @@
 import { StoreArchiveData } from "../src/data/store";
 import type { RunContext } from "../src/ctx";
 import { runTick, type TickResult } from "../src/jobs/tick";
+import {
+	runStatusKey,
+	type ArchiveIndex,
+	writeRunStatus,
+} from "../src/store/indexModel";
 import { S3Store } from "../src/store/s3";
 import { StoreRenderSink } from "../src/sink";
 
@@ -90,9 +95,16 @@ const releaseLock = async (env: Env): Promise<void> => {
 
 const runTickFor = (env: Env): Promise<TickResult> => {
 	const fid = archiverFid(env);
+	let lastPush = 0;
 	return runTick(fid, getCtx(env), {
 		hydrateBudget: Number(env.HYDRATE_BUDGET ?? 40),
 		tickMs: Number(env.TICK_MS ?? 8 * 60_000) || 8 * 60_000,
+		onProgress: (progress) => {
+			const now = Date.now();
+			if (now - lastPush < 2_000) return;
+			lastPush = now;
+			void writeRunStatus(getStore(env), progress).catch(() => {});
+		},
 	});
 };
 
@@ -120,6 +132,12 @@ const handleRun = async (env: Env): Promise<Response> => {
 
 const handleStatus = async (env: Env): Promise<Response> => {
 	const s = getStore(env);
+	let progress: unknown = undefined;
+	try {
+		const obj = await s.get(runStatusKey);
+		if (obj) progress = JSON.parse(new TextDecoder().decode(obj.body));
+	} catch {}
+	
 	const obj = await s.get(LOCK_KEY);
 	let running = false;
 	let takenAt: number | undefined;
@@ -141,7 +159,7 @@ const handleStatus = async (env: Env): Promise<Response> => {
 			);
 		} catch {}
 	}
-	return Response.json({ running, takenAt, cursorOffset });
+	return Response.json({ running, takenAt, cursorOffset, progress });
 };
 
 interface ScheduledEvent {

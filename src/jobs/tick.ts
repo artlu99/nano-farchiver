@@ -19,11 +19,13 @@ import { writeLoop } from "./write";
  *   2. tag every feed cast (cheap, idempotent)
  *   3. rotation sweep over the rest of the feed from the cursor (freshness:
  *      every feed cast re-reads its conversations once per ~budget ticks)
- *   4. missing-cast drain, self-heal, renders (skip-if-rendered makes this
- *      near-free in steady state)
+ *   4. missing-cast drain, renders (skip-if-rendered makes this near-free
+ *      in steady state)
  * All index mutations are deferred and flushed as ONE PUT at the end; a
  * crashed tick loses only the buffered index (objects persist; the next
- * tick re-tags by re-crawl).
+ * tick re-tags by re-crawl). Self-heal from backups/ is NOT part of the
+ * tick — Workers cannot see local backups/; run `bun run doIt` locally for
+ * that (no-op unless a manifest entry is missing).
  */
 export interface TickOptions {
 	/** Max feed casts whose conversations are hydrated this tick. */
@@ -32,6 +34,34 @@ export interface TickOptions {
 	tickMs?: number;
 	/** Render cutoff: castsLoop stops starting new renders past this time. */
 	renderDeadline?: number;
+	/** Progress sink — called on phase changes and per-cast updates. */
+	onProgress?: (progress: TickProgress) => void;
+}
+
+export type TickPhase =
+	| "feeds"
+	| "hydrate"
+	| "sweep"
+	| "drain"
+	| "render"
+	| "idle";
+
+export interface TickProgress {
+	running: boolean;
+	fid: number;
+	phase: TickPhase;
+	startedAt: number;
+	updatedAt: number;
+	completedAt?: number;
+	error?: string;
+	hydrateBudget: number;
+	hydrated: number;
+	unknown: number;
+	offset: number;
+	renders: number;
+	scanned: number;
+	failures: number;
+	lastLine: string;
 }
 
 export interface TickResult {
@@ -55,6 +85,28 @@ export const runTick = async (
 	const hydrateBudget = options?.hydrateBudget ?? 40;
 	const deadline = Date.now() + (options?.tickMs ?? 8 * 60_000);
 	const renderDeadline = options?.renderDeadline;
+	const onProgress = options?.onProgress;
+	const startedAt = Date.now();
+
+	// Reads the live closure counters — call sites pass only phase + lastLine.
+	const progress = (phase: TickPhase, lastLine = ""): void => {
+		if (!onProgress) return;
+		onProgress({
+			running: true,
+			fid,
+			phase,
+			startedAt,
+			updatedAt: Date.now(),
+			hydrateBudget,
+			hydrated,
+			unknown,
+			offset,
+			renders,
+			scanned,
+			failures,
+			lastLine,
+		});
+	};
 
 	await ctx.data.deferCommits();
 	let all: Cast[] = [];
@@ -68,6 +120,7 @@ export const runTick = async (
 		const casts = await getCronFeed(fid);
 		const replies = await getReplies(fid);
 		all = [...casts.casts, ...replies.casts];
+		progress("feeds", `feeds: ${all.length} casts in feed`);
 
 		// Identify unknown casts BEFORE tagging (tagging makes them known).
 		const unknownCasts: Cast[] = [];
@@ -77,15 +130,18 @@ export const runTick = async (
 		unknown = unknownCasts.length;
 
 		await tagCasts(all, ctx);
+		progress("hydrate", `tagged ${all.length} casts, ${unknown} new`);
 
 		// 1. unknown-first hydration (new content beats the freshness sweep)
 		for (const cast of unknownCasts) {
 			if (hydrated >= hydrateBudget || Date.now() > deadline) break;
 			hydrated += 1;
+			progress("hydrate", `conversation for ${cast.hash.slice(0, 10)}`);
 			try {
 				await processQueuedCast(cast, true, ctx);
 			} catch (error) {
 				failures += 1;
+				progress("hydrate", `failed: ${cast.hash.slice(0, 10)}`);
 				console.error(
 					`tick: hydration failed for ${cast.hash}:`,
 					error instanceof Error ? error.message : error,
@@ -98,6 +154,7 @@ export const runTick = async (
 		const listLen = Math.max(1, all.length);
 		offset = cursorRaw !== undefined ? Number(cursorRaw) || 0 : 0;
 		let swept = 0;
+		progress("sweep", `sweep from offset ${offset}`);
 		while (
 			hydrated < hydrateBudget &&
 			Date.now() <= deadline &&
@@ -107,10 +164,12 @@ export const runTick = async (
 			offset = (offset + 1) % listLen;
 			swept += 1;
 			hydrated += 1;
+			progress("sweep", `sweep ${swept}/${all.length}`);
 			try {
 				await processQueuedCast(cast, true, ctx);
 			} catch (error) {
 				failures += 1;
+				progress("sweep", `failed: ${cast.hash.slice(0, 10)}`);
 				console.error(
 					`tick: sweep failed for ${cast.hash}:`,
 					error instanceof Error ? error.message : error,
@@ -120,8 +179,16 @@ export const runTick = async (
 
 		await ctx.data.setSetting(CURSOR_KEY(fid), String(offset));
 
+		progress("drain", "draining missing casts");
 		await drainMissingCasts(2, ctx);
-		const renderResult = await writeLoop("out", ctx, renderDeadline);
+
+		progress("render", "rendering");
+		const renderResult = await writeLoop(
+			"out",
+			ctx,
+			renderDeadline,
+			(line: string) => progress("render", line),
+		);
 		renders = renderResult.written;
 		scanned = renderResult.scanned;
 	} finally {

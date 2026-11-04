@@ -63,6 +63,13 @@ const FILENAME_A = "20260101-000000-aaa1aaaa.md";
 const env: Env = {
 	ASSETS: { fetch: async () => new Response("asset", { status: 200 }) },
 	FACILITATOR: { fetch: async () => new Response("{}", { status: 200 }) },
+	ARCHIVER: {
+		fetch: async () =>
+			new Response(JSON.stringify({ requested: true }), {
+				status: 202,
+				headers: { "Content-Type": "application/json" },
+			}),
+	},
 	S3_ENDPOINT: "https://example.r2.cloudflarestorage.com",
 	S3_BUCKET: "test",
 	S3_REGION: "auto",
@@ -186,6 +193,13 @@ describe("web routes (bucket-backed)", () => {
 
 	test("unknown paths 404", async () => {
 		expect((await request("/browse/nobody/")).status).toBe(404);
+	});
+
+	test("POST /doIt forwards to the ARCHIVER binding (202)", async () => {
+		const res = await app.request("/doIt", { method: "POST" }, env);
+		expect(res.status).toBe(202);
+		const body = (await res.json()) as { requested: boolean };
+		expect(body.requested).toBe(true);
 	});
 });
 

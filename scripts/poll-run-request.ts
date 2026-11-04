@@ -1,37 +1,44 @@
 /**
  * Every-minute poller (cron): consume the run-request marker and execute
- * the archiver pipeline in-process. The marker is consumed BEFORE the run
- * (at-least-once semantics: a request arriving mid-run triggers the next
- * run); failures are logged, never retried in a loop — the hourly marker
- * re-arms the schedule anyway.
+ * one bounded tick of the archiver pipeline. The marker is consumed BEFORE
+ * the run (at-least-once semantics); failures are logged, never retried in
+ * a loop — the hourly marker re-arms the schedule anyway. Progress is
+ * written to meta/run-status.json for the web worker's /runs live view.
  *
- * Crontab wraps this in flock -n on logs/doit.lock, which is also the lock
- * the (optional) direct `bun run doIt` path uses — mutual exclusion between
- * poller runs and manual runs without any extra machinery.
+ * Crontab wraps this in flock -n on logs/doit.lock — mutual exclusion with
+ * any direct `bun run doIt` without extra machinery.
  *
  *   * * * * * cd <repo> && flock -n logs/doit.lock bun scripts/poll-run-request.ts
  */
-
-import { doIt } from "../src/index";
-import { ARCHIVER_FID } from "../src/lib/config";
+import { runtimeContext } from "../src/ctx";
+import { runTick } from "../src/jobs/tick";
+import { runStatusKey, writeRunStatus } from "../src/store/indexModel";
 import { S3Store, s3ConfigFromEnv } from "../src/store/s3";
+import { ARCHIVER_FID } from "../src/lib/config";
 
-const RUN_REQUEST_KEY = "meta/run-request";
-
+const fid = Number(process.env.ARCHIVER_FID ?? ARCHIVER_FID);
 const store = new S3Store(s3ConfigFromEnv());
-const marker = await store.get(RUN_REQUEST_KEY);
+
+const marker = await store.get("meta/run-request");
 if (!marker) process.exit(0);
 
-console.log(
-	`run-request detected at ${new Date().toISOString()} — consuming marker, running`,
-);
-// Consume the marker BEFORE executing: requests arriving during the run are
-// not lost (the next poller minute re-checks; the hourly cron re-arms anyway).
-await store.deleteKey(RUN_REQUEST_KEY);
+console.log(`run-request detected at ${new Date().toISOString()} — consuming marker, running`);
+await store.deleteKey("meta/run-request");
 
+let lastPush = 0;
 try {
-	await doIt(Number(process.env.ARCHIVER_FID ?? ARCHIVER_FID));
-	console.log(`run completed at ${new Date().toISOString()}`);
+	const result = await runTick(fid, runtimeContext(), {
+		onProgress: (progress) => {
+			// throttle status writes to ~1/2s (R2 Class A budget)
+			const now = Date.now();
+			if (now - lastPush < 2_000) return;
+			lastPush = now;
+			void writeRunStatus(store, progress).catch(() => {});
+		},
+	});
+	console.log(
+		`run completed at ${new Date().toISOString()}: ${result.renders} renders, ${result.hydrated} hydrated, ${result.failures} failures`,
+	);
 } catch (error) {
 	console.error(
 		`run FAILED at ${new Date().toISOString()}:`,

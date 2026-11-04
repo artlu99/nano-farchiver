@@ -164,6 +164,7 @@ export const castsLoop = async (
 	outDir: string = OUT_DIR,
 	ctx: RunContext = defaultRunContext(),
 	deadline?: number,
+	onWrite?: (relPath: string) => void,
 ): Promise<RenderLoopResult> => {
 	const sink = ctx.out(outDir);
 	const casts = await ctx.data.listCasts();
@@ -235,6 +236,7 @@ export const castsLoop = async (
 		}
 		console.log("writing cast to", `${outDir}/${castRelPath}`);
 		written += 1;
+		onWrite?.(castRelPath);
 		const renderedCast = await renderCast(hydratedCast, ctx);
 
 		// write
@@ -282,12 +284,13 @@ export const writeLoop = async (
 	outDir: string = OUT_DIR,
 	ctx: RunContext = defaultRunContext(),
 	renderDeadline?: number,
+	onWrite?: (relPath: string) => void,
 ): Promise<RenderLoopResult> => {
 	await fidsLoop(outDir, ctx);
 	// Ensure all referenced parent casts exist before writing files.
 	await hydrateReferencedParents(5, ctx);
 	await hydrateQuotedCastEmbeds(5, ctx);
-	const result = await castsLoop(outDir, ctx, renderDeadline);
+	const result = await castsLoop(outDir, ctx, renderDeadline, onWrite);
 	// One more pass to write user files discovered during cast hydration/writes.
 	await fidsLoop(outDir, ctx);
 	return result;

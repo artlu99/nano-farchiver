@@ -92,8 +92,9 @@ app.get("/api/policy", async (c) => {
 	}
 });
 
-/** POST /doIt — forwards to the archiver worker, which sets the run-request
- *  marker in R2; the server's minute poller consumes it and executes. 202. */
+/** POST /doIt — forwards to the archiver worker via the ARCHIVER binding,
+ *  which writes the run-request marker; the server's minute poller consumes
+ *  it and executes. 202 immediately (marker write is one tiny PUT). */
 app.post("/doIt", async (c) => {
 	try {
 		const upstream = await c.env.ARCHIVER.fetch(
@@ -105,6 +106,89 @@ app.post("/doIt", async (c) => {
 		return c.text("archiver worker unreachable", 502);
 	}
 });
+
+/** GET /runs/status — the run progress object written by the archiver. */
+app.get("/runs/status", async (c) => {
+	try {
+		const obj = await getStore(c.env).get("meta/run-status.json");
+		if (!obj) return c.json({ running: false, phase: "idle" });
+		return c.json(JSON.parse(new TextDecoder().decode(obj.body)));
+	} catch {
+		return c.json({ running: false, phase: "idle" });
+	}
+});
+
+/** GET /runs — live view: phase, counters, last line; polls every 2 s. */
+app.get("/runs", (c) =>
+	c.html(
+		`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>run status — nano-farchiver</title>
+<link rel="stylesheet" href="/static/styles.css">
+<style>
+body{max-width:48rem;margin:2rem auto;font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif}
+.breadcrumb{margin-bottom:1.5rem;font-size:.9rem;color:var(--muted)}
+.breadcrumb a{color:var(--muted)}
+dl{background:var(--surface);padding:1rem;border-radius:4px}
+dt{font-weight:600}dd{margin:0 0 .25rem 1rem;color:var(--muted)}
+.phase{font-size:1.4rem;font-weight:700;margin:0 0 1rem}
+.lastline{font-family:ui-monospace,monospace;font-size:.9rem;color:var(--muted);white-space:pre-wrap;word-break:break-word;min-height:1.4em}
+.badge{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.8rem;font-weight:600}
+.badge.running{background:#e3f6ee;color:#00704f}
+.badge.idle{background:var(--soft);color:var(--muted)}
+.badge.error{background:#fde8ef;color:#b3174b}
+</style>
+</head>
+<body>
+<h1>Archiver run</h1>
+<p><span id="badge" class="badge idle">idle</span> <span id="phase">—</span></p>
+<dl>
+<dt>started</dt><dd id="started">—</dd>
+<dt>updated</dt><dd id="updated">—</dd>
+<dt>unknown casts</dt><dd id="unknown">—</dd>
+<dt>hydrated</dt><dd id="hydrated">—</dd>
+<dt>sweep offset</dt><dd id="offset">—</dd>
+<dt>renders written</dt><dd id="renders">—</dd>
+<dt>casts scanned</dt><dd id="scanned">—</dd>
+<dt>failures</dt><dd id="failures">—</dd>
+</dl>
+<p class="lastline" id="lastline"></p>
+<p><a href="/">← back</a> · <a href="/timeline">timeline</a></p>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
+function render(p) {
+  const running = p.running === true;
+  const badge = $("badge");
+  badge.textContent = running ? "running" : (p.phase === "idle" ? "idle" : "finished");
+  badge.className = "badge " + (running ? "running" : "idle");
+  $("phase").textContent = esc(p.phase ?? "—");
+  $("started").textContent = p.startedAt ? new Date(p.startedAt).toLocaleString() : "—";
+  $("updated").textContent = p.updatedAt ? new Date(p.updatedAt).toLocaleString() : "—";
+  $("unknown").textContent = String(p.unknown ?? "—");
+  $("hydrated").textContent = String(p.hydrated ?? "—");
+  $("offset").textContent = String(p.offset ?? "—");
+  $("renders").textContent = String(p.renders ?? "—");
+  $("scanned").textContent = String(p.scanned ?? "—");
+  $("failures").textContent = String(p.failures ?? "—");
+  $("lastline").textContent = p.lastLine ?? "";
+}
+async function poll() {
+  try {
+    const res = await fetch("/runs/status", { cache: "no-store" });
+    if (res.ok) render(await res.json());
+  } catch {}
+}
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>`,
+	),
+);
 
 /** GET /browse and /browse/ — user-directory listing with the glance. */
 const browseRoot = (c: { env: Env }) =>
