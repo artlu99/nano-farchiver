@@ -1,10 +1,12 @@
 import type { RunContext } from "../src/ctx";
 import { StoreArchiveData } from "../src/data/store";
-import { runTick, type TickResult } from "../src/jobs/tick";
+import { runTick, type TickResult, tickCursorKey } from "../src/jobs/tick";
 import { StoreRenderSink } from "../src/sink";
 import {
+	getJSON,
 	runRequestKey,
 	runStatusKey,
+	settingKey,
 	writeRunStatus,
 } from "../src/store/indexModel";
 import { S3Store } from "../src/store/s3";
@@ -152,15 +154,14 @@ const handleStatus = async (env: Env): Promise<Response> => {
 			running = takenAt !== undefined && Date.now() - takenAt < LOCK_TTL_MS;
 		} catch {}
 	}
-	const cursorObj = await s.get(`meta/cursor/${archiverFid(env)}`);
-	let cursorOffset: number | undefined;
-	if (cursorObj) {
-		try {
-			cursorOffset = Number(
-				JSON.parse(new TextDecoder().decode(cursorObj.body)),
-			);
-		} catch {}
-	}
+	// The tick persists its rotation-sweep cursor as a settings row
+	// (tick_cursor:<fid> via ctx.data.setSetting) — not a meta/cursor object.
+	const stored = await getJSON<{ value: string }>(
+		s,
+		settingKey(tickCursorKey(archiverFid(env))),
+	);
+	const parsedCursor = Number(stored?.value);
+	const cursorOffset = Number.isFinite(parsedCursor) ? parsedCursor : undefined;
 	return Response.json({ running, takenAt, cursorOffset, progress });
 };
 

@@ -9,7 +9,7 @@ import { hash2filename, normalizeHash } from "../lib/helpers";
 import { loadIndex } from "../store/indexModel";
 import { MemoryStore } from "../store/memory";
 import { makeCast } from "../test/fixtures";
-import type { TickProgress } from "./tick";
+import { type TickProgress, tickCursorKey } from "./tick";
 
 // self-heal must no-op in tests: point BACKUPS_DIR at an empty temp dir
 process.env.BACKUPS_DIR = mkdtempSync(
@@ -100,7 +100,7 @@ describe("runTick (budgeted pipeline)", () => {
 		feedCasts = [10, 11, 12, 13].map((i) => makeCast({ hash: hashAt(i) }));
 		// first pass: everything known → the sweep is what runs
 		await runTick(3319217, ctx, { hydrateBudget: 10, tickMs: 60_000 });
-		await ctx.data.setSetting("tick_cursor:3319217", "3");
+		await ctx.data.setSetting(tickCursorKey(3319217), "3");
 		stats.conversations = [];
 
 		const second = await runTick(3319217, ctx, {

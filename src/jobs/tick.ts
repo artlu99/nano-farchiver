@@ -75,7 +75,8 @@ export interface TickResult {
 	failures: number;
 }
 
-const CURSOR_KEY = (fid: number): string => `tick_cursor:${fid}`;
+/** Rotation-sweep cursor position, persisted as a settings row (tick_cursor:<fid>). */
+export const tickCursorKey = (fid: number): string => `tick_cursor:${fid}`;
 
 export const runTick = async (
 	fid: number,
@@ -151,7 +152,7 @@ export const runTick = async (
 		}
 
 		// 2. rotation sweep over the feed from the cursor position
-		const cursorRaw = await ctx.data.getSetting(CURSOR_KEY(fid));
+		const cursorRaw = await ctx.data.getSetting(tickCursorKey(fid));
 		const listLen = Math.max(1, all.length);
 		offset = cursorRaw !== undefined ? Number(cursorRaw) || 0 : 0;
 		let swept = 0;
@@ -178,7 +179,7 @@ export const runTick = async (
 			}
 		}
 
-		await ctx.data.setSetting(CURSOR_KEY(fid), String(offset));
+		await ctx.data.setSetting(tickCursorKey(fid), String(offset));
 
 		progress("drain", "draining missing casts");
 		await drainMissingCasts(2, ctx);
