@@ -92,14 +92,19 @@ app.get("/api/policy", async (c) => {
 	}
 });
 
-/** POST /doIt — the archiver runs on the server's cron, not on Workers
- *  (free-plan CPU cannot execute ticks). Kept as an explicit 501. */
-app.post("/doIt", (c) =>
-	c.text(
-		"runs execute on the server cron (ARCHIVE_BACKEND=store); worker execution requires Workers Paid",
-		501,
-	),
-);
+/** POST /doIt — forwards to the archiver worker, which sets the run-request
+ *  marker in R2; the server's minute poller consumes it and executes. 202. */
+app.post("/doIt", async (c) => {
+	try {
+		const upstream = await c.env.ARCHIVER.fetch(
+			new Request("https://archiver/runs/request", { method: "POST" }),
+		);
+		return c.json(await upstream.json(), 202);
+	} catch (error) {
+		console.error("doIt proxy error:", error);
+		return c.text("archiver worker unreachable", 502);
+	}
+});
 
 /** GET /browse and /browse/ — user-directory listing with the glance. */
 const browseRoot = (c: { env: Env }) =>

@@ -154,6 +154,15 @@ export default {
 		if (request.method === "POST" && url.pathname === "/runs") {
 			return handleRun(env);
 		}
+		// Inverted lockfile (MIGRATION.md §10.7): a tiny marker the server
+		// poller watches — one PUT is well inside the free-plan CPU budget.
+		if (request.method === "POST" && url.pathname === "/runs/request") {
+			await getStore(env).put(
+				"meta/run-request",
+				JSON.stringify({ requestedAt: Date.now() }),
+			);
+			return Response.json({ requested: true });
+		}
 		if (request.method === "GET" && url.pathname === "/runs/status") {
 			return handleStatus(env);
 		}
