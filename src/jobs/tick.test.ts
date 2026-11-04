@@ -141,8 +141,9 @@ describe("runTick (budgeted pipeline)", () => {
 		expect(last.phase).toBe("idle");
 		expect(last.completedAt).toBeNumber();
 		expect(last.lastLine).toBe("done");
-		// final counters land in the terminal event (renders happened)
-		expect(last.hydrated).toBe(2);
+		// final counters land in the terminal event (renders happened);
+		// hydrated = 2 unknown-first + 2 sweep re-reads (budget 5 not spent)
+		expect(last.hydrated).toBe(4);
 		expect(last.renders).toBe(2);
 		expect(last.scanned).toBe(2);
 		// every mid-run event reports running:true
