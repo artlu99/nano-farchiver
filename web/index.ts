@@ -199,6 +199,8 @@ setInterval(poll, 2000);
 </script>
 </body>
 </html>`,
+		200,
+		{ "Cache-Control": "no-store" },
 	),
 );
 
