@@ -74,8 +74,11 @@ export const timelineHtml = (
 			const username = usernameOf(row.fid);
 			const basename = hash2filename(row.hash, new Date(row.ts));
 			const href = `/browse/${encodeURIComponent(username)}/${encodeURIComponent(basename)}`;
+			// forkcaster.xyz mirrors cast URLs (short or full hash) — same
+			// external permalink the Bun stack's timeline rendered
+			const forkHref = `https://forkcaster.xyz/${encodeURIComponent(username)}/${row.hash}`;
 			body += `<article class="cast-row">`;
-			body += `<div class="cast-meta"><a href="${escapeHtml(href)}">@${escapeHtml(username)}</a> · <code>${escapeHtml(row.hash.slice(0, 10))}</code></div>`;
+			body += `<div class="cast-meta"><a href="${escapeHtml(href)}">@${escapeHtml(username)}</a> · <code><a href="${escapeHtml(forkHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.hash.slice(0, 10))}</a></code></div>`;
 			body += `<div class="cast-snippet">${escapeHtml(snippet(row.preview, previewLength))}</div>`;
 
 			if (row.parentHash) {

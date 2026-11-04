@@ -112,6 +112,11 @@ describe("web routes (bucket-backed)", () => {
 		expect(html).toContain("a reply to the first cast");
 		expect(html).toContain("hello world from the archive");
 		expect(html).not.toContain("this one is tombstoned");
+		// forkcaster permalink restored (external hash link per cast)
+		expect(html).toContain(
+			"https://forkcaster.xyz/artlu/0xbbb2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		);
+		expect(html).toContain('target="_blank" rel="noopener noreferrer"');
 
 		const filtered = await request("/timeline?spamaway=1");
 		const filteredHtml = await filtered.text();
