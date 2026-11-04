@@ -19,7 +19,6 @@
 	},
 	"dependencies": {
 		"@farcaster/core": "^0.18.10",
-		"@neynar/nodejs-sdk": "^3.137.2",
 		"@x402/core": "^2.10.0",
 		"@x402/evm": "^2.10.0",
 		"@x402/hono": "^2.10.0",
@@ -33,6 +32,7 @@
 		"viem": "^2.48.4"
 	},
 	"devDependencies": {
+		"@neynar/nodejs-sdk": "^3.137.2",
 		"@types/bun": "latest"
 	}
 }
