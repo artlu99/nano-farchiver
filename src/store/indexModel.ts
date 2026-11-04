@@ -39,8 +39,7 @@ export const runStatusKey = "meta/run-status.json";
 export const writeRunStatus = (
 	store: ArchiveStore,
 	progress: unknown,
-): Promise<PutResult> =>
-	store.put(runStatusKey, JSON.stringify(progress));
+): Promise<PutResult> => store.put(runStatusKey, JSON.stringify(progress));
 export const cursorKey = (fid: number): string => `meta/cursor/${fid}.json`;
 
 // ---------------------------------------------------------------------------

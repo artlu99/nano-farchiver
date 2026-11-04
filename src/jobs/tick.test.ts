@@ -119,8 +119,8 @@ describe("runTick (budgeted pipeline)", () => {
 
 		const idx = (await loadIndex(store))?.index;
 		const entry = idx?.casts[normalizeHash(cast.hash)];
-		expect(entry).toBeDefined();
-		const filename = hash2filename(cast.hash, new Date(entry![1]));
+		if (!entry) throw new Error("expected index entry for cast");
+		const filename = hash2filename(cast.hash, new Date(entry[1]));
 		const obj = await store.get(`out/artlu/${filename}`);
 		expect(obj).not.toBeNull();
 		expect(idx?.rendered.artlu?.[filename]).toBeDefined();

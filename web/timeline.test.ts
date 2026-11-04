@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { ArchiveIndex } from "../src/store/indexModel";
 import { resetSpamScoreCache, type ScoreFetcher } from "./spam-scores";
 import { spamThresholdFromQuery } from "./spam-threshold";

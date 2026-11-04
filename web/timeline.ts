@@ -10,8 +10,6 @@ export interface TimelineOptions {
 	textfilters: string[];
 	/** Hide casts scoring ≥ this % spam (Quilcast). 0 = off. */
 	spamThreshold?: number;
-	/** Score-check pool size: the newest N rows get scored (default 100). */
-	windowSize?: number;
 	/** DI: score fetcher for tests (defaults to global fetch). */
 	scoreFetcher?: ScoreFetcher;
 }
@@ -44,7 +42,6 @@ export const timelineHtml = async (
 		previewLength,
 		spamaway,
 		spamThreshold = 0,
-		windowSize = 100,
 		scoreFetcher,
 	} = options;
 	const rx = spamaway ? spamRegex(options.textfilters) : null;
