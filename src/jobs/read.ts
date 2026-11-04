@@ -159,7 +159,7 @@ export const countReplies = (
 	ctx: RunContext = defaultRunContext(),
 ): Promise<number> => ctx.data.countReplies(fid, hash);
 
-const processQueuedCast = async (
+export const processQueuedCast = async (
 	c: Cast,
 	fullConversationsMode: boolean,
 	ctx: RunContext,

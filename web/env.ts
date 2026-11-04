@@ -10,13 +10,15 @@ export interface Env {
 	ASSETS: { fetch(request: Request): Promise<Response> };
 	/** Service binding: facilitator worker (workers.dev fetch is blocked). */
 	FACILITATOR: { fetch(request: Request): Promise<Response> };
+	/** Service binding: archiver worker (POST /runs, GET /runs/status). */
+	ARCHIVER: { fetch(request: Request): Promise<Response> };
 	S3_ENDPOINT: string;
 	S3_BUCKET: string;
 	S3_REGION?: string;
 	S3_ACCESS_KEY_ID: string;
 	S3_SECRET_ACCESS_KEY: string;
 	ARCHIVER_FID?: string;
-	/** Base URL of the archiver service (R1: unauthenticated REST). */
+	/** Base URL of the archiver service — superseded by the ARCHIVER binding. */
 	ARCHIVER_URL?: string;
 	PURGE_MIN_AGE_DAYS?: string;
 	/** The one username whose files sit behind the x402 paywall. */

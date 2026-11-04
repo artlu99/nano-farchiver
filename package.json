@@ -4,7 +4,7 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"test": "bun test src/lib/markdown.test.ts src/lib/concurrency.test.ts src/lib/helpers.test.ts src/lib/timers.test.ts src/lib/snapchain.test.ts src/lib/verify.test.ts src/store/store.test.ts src/data/store.test.ts src/jobs/read.test.ts src/jobs/write.test.ts src/jobs/queue.test.ts src/jobs/purge.test.ts",
+		"test": "bun test src/lib/markdown.test.ts src/lib/concurrency.test.ts src/lib/helpers.test.ts src/lib/timers.test.ts src/lib/snapchain.test.ts src/lib/verify.test.ts src/store/store.test.ts src/data/store.test.ts src/jobs/read.test.ts src/jobs/write.test.ts src/jobs/queue.test.ts src/jobs/purge.test.ts src/jobs/tick.test.ts web/index.test.ts",
 		"doIt": "bun src/index.ts",
 		"backup:all": "bun src/jobs/purge.ts backup",
 		"backup:verify": "bun src/jobs/purge.ts verify",

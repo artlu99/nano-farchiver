@@ -92,20 +92,18 @@ app.get("/api/policy", async (c) => {
 	}
 });
 
-/** POST /doIt — proxy to the archiver service (R1: unauthenticated REST). */
+/** POST /doIt — proxy to the archiver worker via the ARCHIVER binding (R1).
+ *  202 immediately; the tick runs in the background via waitUntil. */
 app.post("/doIt", async (c) => {
-	const base = c.env.ARCHIVER_URL;
-	if (!base) {
-		return c.text("archiver service not configured (set ARCHIVER_URL)", 501);
-	}
 	try {
-		const upstream = await fetch(`${base.replace(/\/+$/, "")}/runs`, {
-			method: "POST",
-		});
-		return c.text(await upstream.text(), upstream.status as 200 | 409 | 429);
+		const upstream = c.env.ARCHIVER.fetch(
+			new Request("https://archiver/runs", { method: "POST" }),
+		);
+		c.executionCtx.waitUntil(upstream);
+		return c.json({ queued: true }, 202);
 	} catch (error) {
 		console.error("doIt proxy error:", error);
-		return c.text("archiver unreachable", 502);
+		return c.text("archiver worker unreachable", 502);
 	}
 });
 

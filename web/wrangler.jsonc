@@ -14,6 +14,11 @@
 			// URL from inside a Worker is blocked by Cloudflare (error 1042).
 			"binding": "FACILITATOR",
 			"service": "cf-x402-facilitator"
+		},
+		{
+			// POST /doIt forwards to the archiver worker's POST /runs.
+			"binding": "ARCHIVER",
+			"service": "farchiver-archiver"
 		}
 	],
 	"vars": {

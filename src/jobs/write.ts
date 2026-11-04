@@ -154,10 +154,17 @@ export const fidsLoop = async (
 	}
 };
 
+export interface RenderLoopResult {
+	scanned: number;
+	written: number;
+	marked: number;
+}
+
 export const castsLoop = async (
 	outDir: string = OUT_DIR,
 	ctx: RunContext = defaultRunContext(),
-) => {
+	deadline?: number,
+): Promise<RenderLoopResult> => {
 	const sink = ctx.out(outDir);
 	const casts = await ctx.data.listCasts();
 	const rendered = await ctx.data.listRendered();
@@ -168,6 +175,7 @@ export const castsLoop = async (
 	let written = 0;
 
 	for (const { fid, hash, ts } of casts) {
+		if (deadline !== undefined && Date.now() > deadline) break;
 		// Tombstoned casts are never rendered or rewritten — their archived
 		// files stay untouched, and re-rendering after a purge is self-heal's job.
 		if (await isCastDeleted(hash, ctx)) continue;
@@ -254,6 +262,7 @@ ${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.chann
 	console.log(
 		`renders: ${written} written, ${pendingRendered.length - written} marked current, ${casts.length} scanned`,
 	);
+	return { scanned: casts.length, written, marked: pendingRendered.length };
 };
 
 const getCastOrLog = async (
@@ -272,12 +281,14 @@ const getCastOrLog = async (
 export const writeLoop = async (
 	outDir: string = OUT_DIR,
 	ctx: RunContext = defaultRunContext(),
-) => {
+	renderDeadline?: number,
+): Promise<RenderLoopResult> => {
 	await fidsLoop(outDir, ctx);
 	// Ensure all referenced parent casts exist before writing files.
 	await hydrateReferencedParents(5, ctx);
 	await hydrateQuotedCastEmbeds(5, ctx);
-	await castsLoop(outDir, ctx);
+	const result = await castsLoop(outDir, ctx, renderDeadline);
 	// One more pass to write user files discovered during cast hydration/writes.
 	await fidsLoop(outDir, ctx);
+	return result;
 };

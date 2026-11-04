@@ -1,0 +1,21 @@
+{
+	// Archiver worker: executes archive runs on Cloudflare.
+	//   POST /runs        202 {queued} — enqueue + run one bounded tick (async)
+	//   GET  /runs/status {running, cursor, failures…}
+	//   scheduled (cron)  — runs a tick automatically
+	// Deploy:  bunx wrangler deploy --config archiver/wrangler.jsonc
+	// Secrets: bunx wrangler secret put S3_ACCESS_KEY_ID --config archiver/wrangler.jsonc
+	//          (same for S3_SECRET_ACCESS_KEY)
+	"name": "farchiver-archiver",
+	"main": "index.ts",
+	"compatibility_date": "2026-01-15",
+	"compatibility_flags": ["nodejs_compat"],
+	"triggers": { "crons": ["17 * * * *"] },
+	"vars": {
+		"ARCHIVER_FID": "3319217",
+		"S3_REGION": "auto",
+		"S3_ENDPOINT": "https://aae000450784e31504d2d4d9b3eb314f.r2.cloudflarestorage.com",
+		"S3_BUCKET": "nano-farchiver"
+	},
+	"observability": { "enabled": true }
+}
