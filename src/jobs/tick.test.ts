@@ -9,6 +9,7 @@ import { hash2filename, normalizeHash } from "../lib/helpers";
 import { loadIndex } from "../store/indexModel";
 import { MemoryStore } from "../store/memory";
 import { makeCast } from "../test/fixtures";
+import type { TickProgress } from "./tick";
 
 // self-heal must no-op in tests: point BACKUPS_DIR at an empty temp dir
 process.env.BACKUPS_DIR = mkdtempSync(
@@ -123,5 +124,28 @@ describe("runTick (budgeted pipeline)", () => {
 		const obj = await store.get(`out/artlu/${filename}`);
 		expect(obj).not.toBeNull();
 		expect(idx?.rendered.artlu?.[filename]).toBeDefined();
+	});
+
+	test("onProgress ends with a terminal running:false event", async () => {
+		feedCasts = [40, 41].map((i) => makeCast({ hash: hashAt(i) }));
+		const events: TickProgress[] = [];
+		await runTick(3319217, ctx, {
+			hydrateBudget: 5,
+			tickMs: 60_000,
+			onProgress: (p) => events.push(p),
+		});
+
+		const last = events[events.length - 1];
+		if (!last) throw new Error("expected at least one progress event");
+		expect(last.running).toBe(false);
+		expect(last.phase).toBe("idle");
+		expect(last.completedAt).toBeNumber();
+		expect(last.lastLine).toBe("done");
+		// final counters land in the terminal event (renders happened)
+		expect(last.hydrated).toBe(2);
+		expect(last.renders).toBe(2);
+		expect(last.scanned).toBe(2);
+		// every mid-run event reports running:true
+		for (const e of events.slice(0, -1)) expect(e.running).toBe(true);
 	});
 });

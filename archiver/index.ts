@@ -101,7 +101,9 @@ const runTickFor = (env: Env): Promise<TickResult> => {
 		tickMs: Number(env.TICK_MS ?? 8 * 60_000) || 8 * 60_000,
 		onProgress: (progress) => {
 			const now = Date.now();
-			if (now - lastPush < 2_000) return;
+			// terminal events (running:false) bypass the throttle — dropping
+			// one would leave the status object stuck mid-run forever
+			if (progress.running && now - lastPush < 2_000) return;
 			lastPush = now;
 			void writeRunStatus(getStore(env), progress).catch(() => {});
 		},

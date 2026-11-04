@@ -163,10 +163,12 @@ dt{font-weight:600}dd{margin:0 0 .25rem 1rem;color:var(--muted)}
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
 function render(p) {
-  const running = p.running === true;
+  const STALE_MS = 10 * 60 * 1000; // tick budget is 8 min — older = writer died
+  const stale = p.running === true && (!p.updatedAt || Date.now() - p.updatedAt > STALE_MS);
+  const running = p.running === true && !stale;
   const badge = $("badge");
-  badge.textContent = running ? "running" : (p.phase === "idle" ? "idle" : "finished");
-  badge.className = "badge " + (running ? "running" : "idle");
+  badge.textContent = running ? "running" : stale ? "stale" : (p.phase === "idle" ? "idle" : "finished");
+  badge.className = "badge " + (running ? "running" : stale ? "error" : "idle");
   $("phase").textContent = esc(p.phase ?? "—");
   $("started").textContent = p.startedAt ? new Date(p.startedAt).toLocaleString() : "—";
   $("updated").textContent = p.updatedAt ? new Date(p.updatedAt).toLocaleString() : "—";

@@ -12,7 +12,18 @@ export interface PageOptions {
 	bodyHtml: string;
 }
 
-export const renderPage = ({ title, bodyHtml }: PageOptions): Response =>
+export interface PageOptions {
+	title: string;
+	bodyHtml: string;
+	/** Timeline is parameter-dependent → no-store; other pages cache at the edge. */
+	cacheControl?: string;
+}
+
+export const renderPage = ({
+	title,
+	bodyHtml,
+	cacheControl = "public, max-age=300",
+}: PageOptions): Response =>
 	new Response(
 		`<!DOCTYPE html>
 <html lang="en">
@@ -54,7 +65,7 @@ h2.day{margin:2rem 0 .75rem;padding-top:1rem;border-top:1px solid var(--border);
 .timeline-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:.9rem;color:var(--fg);user-select:none}
 .timeline-toggle input{width:1rem;height:1rem}
 .timeline-slider{display:inline-flex;align-items:center;gap:.5rem;font-size:.9rem;color:var(--fg)}
-.timeline-slider input[type="range"]{width:9rem}
+.timeline-slider input[type="range"]{width:9rem;touch-action:pan-y;-webkit-user-select:none;user-select:none}
 .timeline-slider .value{min-width:2.2rem;text-align:right;font-variant-numeric:tabular-nums}
 </style>
 </head>
@@ -66,7 +77,7 @@ ${bodyHtml}
 			headers: {
 				"Content-Type": "text/html; charset=utf-8",
 				// public pages are identical for everyone — edge-cacheable (§4.2)
-				"Cache-Control": "public, max-age=300",
+				"Cache-Control": cacheControl,
 			},
 		},
 	);

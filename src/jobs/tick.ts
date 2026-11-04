@@ -108,7 +108,6 @@ export const runTick = async (
 		});
 	};
 
-	await ctx.data.deferCommits();
 	let all: Cast[] = [];
 	let unknown = 0;
 	let hydrated = 0;
@@ -116,7 +115,9 @@ export const runTick = async (
 	let offset = 0;
 	let renders = 0;
 	let scanned = 0;
+	let runError: unknown;
 	try {
+		await ctx.data.deferCommits();
 		const casts = await getCronFeed(fid, ctx);
 		const replies = await getReplies(fid, ctx);
 		all = [...casts.casts, ...replies.casts];
@@ -191,8 +192,40 @@ export const runTick = async (
 		);
 		renders = renderResult.written;
 		scanned = renderResult.scanned;
+	} catch (error) {
+		runError = error;
+		throw error;
 	} finally {
 		await ctx.data.flushCommits();
+		// Terminal event: without an explicit running:false write the last
+		// mid-run snapshot (running/render) sticks in meta/run-status.json
+		// forever — the web status block would show "running" indefinitely.
+		if (onProgress) {
+			const completedAt = Date.now();
+			const errorMessage =
+				runError === undefined
+					? undefined
+					: runError instanceof Error
+						? runError.message
+						: String(runError);
+			onProgress({
+				running: false,
+				fid,
+				phase: "idle",
+				startedAt,
+				updatedAt: completedAt,
+				completedAt,
+				hydrateBudget,
+				hydrated,
+				unknown,
+				offset,
+				renders,
+				scanned,
+				failures,
+				lastLine: errorMessage ? `failed: ${errorMessage}` : "done",
+				...(errorMessage ? { error: errorMessage } : {}),
+			});
+		}
 	}
 
 	return {

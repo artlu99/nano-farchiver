@@ -203,7 +203,11 @@ export const timelineHtml = async (
 
 	body += `<script>${controlsScript}</script>`;
 
-	return renderPage({ title: "Timeline", bodyHtml: body });
+	return renderPage({
+		title: "Timeline",
+		bodyHtml: body,
+		cacheControl: "no-store", // parameter-dependent page (?spam, ?spamaway)
+	});
 };
 
 export const timelineLink = (): string =>

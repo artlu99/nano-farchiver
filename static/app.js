@@ -82,7 +82,20 @@
 
 	function renderRun(p) {
 		if (!p || typeof p !== "object") return;
-		runEls.state.textContent = p.running === true ? "running" : "idle";
+		// tick budget is 8 min — a running flag older than 10 min means the
+		// writer died mid-run (crash/reboot); show stale instead of running
+		const STALE_MS = 10 * 60 * 1000;
+		const stale =
+			p.running === true &&
+			(!p.updatedAt || Date.now() - p.updatedAt > STALE_MS);
+		runEls.state.textContent =
+			p.running === true
+				? stale
+					? "stale"
+					: "running"
+				: p.completedAt
+					? "finished"
+					: "idle";
 		runEls.phase.textContent = String(p.phase ?? "—");
 		runEls.started.textContent = fmt(p.startedAt);
 		runEls.updated.textContent = fmt(p.updatedAt);
