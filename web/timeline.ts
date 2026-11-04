@@ -92,7 +92,7 @@ export const timelineHtml = async (
 
 	let body = `<div class="breadcrumb"><a href="/browse">out</a> / <span>timeline</span></div>`;
 	body += `<h1>Timeline</h1>`;
-	body += `<div class="timeline-controls"><label class="timeline-toggle" for="spamaway-toggle"><input type="checkbox" id="spamaway-toggle"> <span>spamaway</span></label><label class="timeline-slider" for="spam-threshold">spam &ge; <span id="spam-threshold-value">${spamThreshold}</span>%</label><input type="range" id="spam-threshold" min="0" max="100" step="5" value="${spamThreshold}"></div>`;
+	body += `<div class="timeline-controls"><label class="timeline-toggle" for="spamaway-toggle"><input type="checkbox" id="spamaway-toggle" autocomplete="off"> <span>spamaway</span></label><label class="timeline-slider" for="spam-threshold">spam &ge; <span id="spam-threshold-value">${spamThreshold}</span>%</label><input type="range" id="spam-threshold" min="0" max="100" step="5" value="${spamThreshold}" autocomplete="off"></div>`;
 	body += `<p>Showing ${visible.length} latest casts</p>`;
 
 	const days = new Map<string, typeof visible>();
@@ -129,9 +129,24 @@ export const timelineHtml = async (
     if (Number.isFinite(t) && t >= 0) threshold = Math.min(100, Math.round(t));
   } catch {}
 
-  if (box) box.checked = spamEnabled;
-  if (slider) slider.value = String(threshold);
-  if (value) value.textContent = String(threshold);
+  // URL param (server-rendered state) is authoritative when present;
+  // Safari's form restoration otherwise reverts controls on navigation.
+  const urlThreshold = Number(url.searchParams.get("spam"));
+  if (Number.isFinite(urlThreshold) && url.searchParams.has("spam")) {
+    threshold = Math.min(100, Math.max(0, Math.round(urlThreshold)));
+  }
+  const urlSpamaway = url.searchParams.get("spamaway");
+  if (urlSpamaway === "0") spamEnabled = false;
+  if (urlSpamaway === "1") spamEnabled = true;
+
+  const reflect = () => {
+    if (box) box.checked = spamEnabled;
+    if (slider) slider.value = String(threshold);
+    if (value) value.textContent = String(threshold);
+  };
+  reflect();
+  // Safari restores form controls after navigation — re-assert on pageshow.
+  window.addEventListener("pageshow", reflect);
 
   // Align URL with stored prefs (one navigation at most).
   const needs = [];
