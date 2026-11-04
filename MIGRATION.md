@@ -98,7 +98,7 @@ out/<username>/<file>.md      backups/…                meta/index.json   meta/
 | `/api/cast/:hash` | index lookup → `casts/<hash>.json` GET |
 | `/status`, `/api/archive/stats`, `/api/policy` | index + `settings/` objects (same response shapes/ETags as today) |
 | `/health`, `/uptime` | unchanged |
-| `POST /doIt` | **proxied**: `POST {ARCHIVER_URL}/runs` (202/429 mapping preserved) |
+| `POST /doIt` | **proxied** via the `ARCHIVER` service binding → `POST /runs/request` on the archiver worker (sets the run-request marker; 202; 502 if the archiver worker is unreachable) |
 | ~~`/review*`~~, ~~`POST /clear`~~ | moved to `archiver` / dropped (writes are not possible with read-only creds — enforced, not just conventional) |
 
 `PUBLIC_APP_URL` rewriting becomes an identity no-op on Workers (kept for dev).
@@ -126,8 +126,10 @@ public pages back to static-asset speed:
 `X402_API_KEY` (secret), `X402_ALLOWLIST`, `X402_MAX_TIMEOUT_SECONDS`,
 `REVIEW_TOKEN` — **not needed** (no review surface here), `S3_ENDPOINT`,
 `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` (**read-only**
-credentials — on R2: an API token scoped read-only to the bucket), `ARCHIVER_URL`
-(piece 2 base URL for `/doIt` proxying).
+credentials — on R2: an API token scoped read-only to the bucket). No base-URL
+vars: worker→worker calls go through service bindings — `FACILITATOR` (x402)
+and `ARCHIVER` (`/doIt` proxying) — because workers.dev→workers.dev fetch is
+blocked (error 1042).
 
 Deps drop to: `hono`, `marked`, `@x402/*`, `aws4fetch` (+ tiny-invariant/radash).
 No `@farcaster/core`, no Neynar client, no `viem` beyond x402's — small bundle.
@@ -201,13 +203,16 @@ Self-heal from `backups/` stays a step in the run, parameterized per fid
 ## 6. REST contract between the pieces (unauthenticated, per R1)
 
 ```
-POST {ARCHIVER_URL}/runs          → 202 {started:true} | 409 {started:false,reason:"busy"}
-GET  {ARCHIVER_URL}/status        → 200 {fids:{fid:{outstanding,completed,lastRunAt,running}}}
+POST /runs          → 200 {queued:true,result} | 409 {queued:false,reason:"busy"}
+POST /runs/request  → 200 {requested:true} — inverted lockfile (meta/run-request marker)
+GET  /runs/status   → 200 {running, takenAt, cursorOffset, progress}
+GET  /health        → 200 {status:"ok"}
 ```
 
-No auth, no signatures. Rationale: both endpoints are read-only in effect (a run is
-bounded/idempotent; status is a read). `web` calls them server-side only (never
-exposes `ARCHIVER_URL` to the browser). If a private deployment ever needs it, a
+No auth, no signatures. Rationale: the endpoints are read-only in effect (a run is
+bounded/idempotent — bucket lock with 30-minute stale takeover; status is a read).
+`web` reaches the archiver server-side through the `ARCHIVER` service binding
+(never exposed to the browser). If a private deployment ever needs auth, a
 shared-token header is a two-line addition — deliberately out of scope now.
 
 ## 7. Code organization
@@ -288,7 +293,7 @@ Progress (2026-11-03):
 - [x] **`web` piece (read-only Worker over the bucket)**: `web/` —
       /browse listings + markdown pages + gated preview, /timeline from the
       index, /api/cast|status|archive-stats|policy, /health + /uptime,
-      POST /doIt proxied to ARCHIVER_URL, x402 paywall port (env-gated),
+      POST /doIt proxied via the ARCHIVER service binding, x402 paywall port (env-gated),
       wrangler.jsonc + public/ asset build, 10 route tests against an
       injected MemoryStore (117 total). Deploy: `bun run web:deploy`.
 - [x] **`web` worker DEPLOYED (stage 4 partially live).**

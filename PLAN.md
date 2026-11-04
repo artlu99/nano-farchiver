@@ -54,9 +54,13 @@ separate `restore` command (folded into `doIt` self-heal), `purge:plan` (folded 
       derive pubkey → assert registered to `ARCHIVER_FID` via `onChainSignersByFid`/KeyRegistry, refuse
       live runs otherwise (dry-run/backup still work without the key)
 - [ ] `src/lib/config.ts`: `ARCHIVER_FID` (default 3319217); refactor `src/index.ts` FID + `server.ts` `DEFAULT_FID` onto it
-- [ ] policy store: `settings(key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)` in `SCHEMA`;
-      `config.ts` `getPolicy()` → `{minAgeDays, source}` with precedence **settings row > `PURGE_MIN_AGE_DAYS` env > 7**,
-      and `setPolicy()` writing the row (age = now − on-protocol cast timestamp; wiped by `bun clean`, env fallback remains)
+- [ ] policy store: settings rows — bucket objects `settings/<key>.json`
+      (`{value, updated_at}`; SQLite twin in the local test bed);
+      `config.ts` `getPolicy()` → `{minAgeDays, source}` with precedence
+      **fid-scoped settings row > global settings row > `PURGE_MIN_AGE_DAYS` env > 7**
+      (pure core in `src/lib/policy.ts`, shared with `web/api.ts`; candidate age =
+      now − on-protocol cast timestamp. `setPolicy()` was dropped with the review
+      UI — the future archiver HTTP service can resurrect it if it needs a writer)
 - [ ] deps: none new needed (sha256 via `node:crypto`; `@noble/hashes` dropped after the gate redesign)
 - [ ] `src/lib/snapchain.ts`: add paginated `castsByFid`, `castById`, `reactionsByFid`, `onChainSignersByFid`, `submitMessage`
 
