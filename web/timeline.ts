@@ -10,6 +10,8 @@ export interface TimelineOptions {
 	textfilters: string[];
 	/** Hide casts scoring ≥ this % spam (Quilcast). 0 = off. */
 	spamThreshold?: number;
+	/** Score-check pool size: the newest N rows get scored (default 100). */
+	windowSize?: number;
 	/** DI: score fetcher for tests (defaults to global fetch). */
 	scoreFetcher?: ScoreFetcher;
 }
@@ -42,6 +44,7 @@ export const timelineHtml = async (
 		previewLength,
 		spamaway,
 		spamThreshold = 0,
+		windowSize = 100,
 		scoreFetcher,
 	} = options;
 	const rx = spamaway ? spamRegex(options.textfilters) : null;
@@ -89,7 +92,7 @@ export const timelineHtml = async (
 
 	let body = `<div class="breadcrumb"><a href="/browse">out</a> / <span>timeline</span></div>`;
 	body += `<h1>Timeline</h1>`;
-	body += `<div class="timeline-controls"><label class="timeline-toggle"><input type="checkbox" id="spamaway-toggle"> <span>spamaway</span></label><label class="timeline-slider">spam &ge; <input type="range" id="spam-threshold" min="0" max="100" step="5" value="${spamThreshold}"> <span id="spam-threshold-value">${spamThreshold}</span>%</label></div>`;
+	body += `<div class="timeline-controls"><label class="timeline-toggle" for="spamaway-toggle"><input type="checkbox" id="spamaway-toggle"> <span>spamaway</span></label><label class="timeline-slider" for="spam-threshold">spam &ge; <span id="spam-threshold-value">${spamThreshold}</span>%</label><input type="range" id="spam-threshold" min="0" max="100" step="5" value="${spamThreshold}"></div>`;
 	body += `<p>Showing ${visible.length} latest casts</p>`;
 
 	const days = new Map<string, typeof visible>();
@@ -140,26 +143,27 @@ export const timelineHtml = async (
     return;
   }
 
-  const apply = (params) => {
-    for (const [k, v] of params) url.searchParams.set(k, v);
-    location.replace(url.toString());
+  const sync = (params) => {
+    const fresh = new URL(location.href);
+    for (const [k, v] of params) fresh.searchParams.set(k, v);
+    location.replace(fresh.toString());
   };
   const DEBOUNCE_MS = 150;
   let timer = 0;
-  const debouncedApply = (params) => {
+  const debouncedSync = (params) => {
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => apply(params), DEBOUNCE_MS);
+    timer = setTimeout(() => sync(params), DEBOUNCE_MS);
   };
 
   if (box) box.addEventListener("change", () => {
-    debouncedApply([["spamaway", box.checked ? "1" : "0"]]);
+    sync([["spamaway", box.checked ? "1" : "0"]]);
   });
   if (slider) {
     slider.addEventListener("input", () => {
       if (value) value.textContent = slider.value;
     });
     slider.addEventListener("change", () => {
-      debouncedApply([["spam", slider.value]]);
+      debouncedSync([["spam", slider.value]]);
     });
   }
 })();
