@@ -10,7 +10,8 @@
 	"main": "index.ts",
 	"compatibility_date": "2026-01-15",
 	"compatibility_flags": ["nodejs_compat"],
-	"triggers": { "crons": ["17 * * * *"] },
+	// NOTE: no Workers cron trigger — execution runs on the server's cron
+	// (hourly marker + minute poller); Workers Free cannot execute ticks.
 	"alias": {
 		// bun:sqlite exists only in the Bun runtime; the Worker never executes
 		// it (all worker paths pass an explicit RunContext) — this stub keeps
