@@ -3,7 +3,7 @@
 	//   POST /runs        202 {queued} — enqueue + run one bounded tick (async)
 	//   GET  /runs/status {running, cursor, failures…}
 	//   scheduled (cron)  — runs a tick automatically
-	// Deploy:  bunx wrangler deploy --config archiver/wrangler.jsonc
+	// Deploy:  bun run archiver:deploy
 	// Secrets: bunx wrangler secret put S3_ACCESS_KEY_ID --config archiver/wrangler.jsonc
 	//          (same for S3_SECRET_ACCESS_KEY)
 	"name": "farchiver-archiver",

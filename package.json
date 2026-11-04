@@ -15,7 +15,8 @@
 		"sync:offsite": "bun scripts/sync-buckets.ts",
 		"web:build": "sh scripts/build-web-assets.sh",
 		"web:dev": "bun run web:build && bunx wrangler dev --config web/wrangler.jsonc",
-		"web:deploy": "bun run web:build && bunx wrangler deploy --config web/wrangler.jsonc"
+		"web:deploy": "bun run web:build && bunx wrangler deploy --config web/wrangler.jsonc",
+		"archiver:deploy": "bunx wrangler deploy --config archiver/wrangler.jsonc"
 	},
 	"dependencies": {
 		"@farcaster/core": "^0.18.10",
