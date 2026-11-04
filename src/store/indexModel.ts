@@ -32,7 +32,8 @@ export const textfiltersKey = "config/textfilters.jsonl";
 export const runStatusKey = "meta/run-status.json";
 export const runRequestKey = "meta/run-request";
 
-/** Last-writer-wins progress object for the /runs live view (no If-Match). */
+/** Last-writer-wins progress object for the landing page's live run section
+ *  (no If-Match). */
 export const writeRunStatus = (
 	store: ArchiveStore,
 	progress: unknown,

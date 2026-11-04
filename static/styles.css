@@ -59,3 +59,83 @@ hr {
 small {
 	color: var(--muted);
 }
+
+/* Archiver run section (landing page, fed by /runs/status via app.js) */
+.run-phase {
+	font-size: 1.1rem;
+	font-weight: 700;
+	margin: 0;
+}
+
+.run-meta {
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+.run-stats {
+	display: flex;
+	gap: 0.75rem;
+	margin: 1rem 0;
+}
+
+.run-stat {
+	flex: 1;
+	background: var(--surface);
+	border-radius: 6px;
+	padding: 0.9rem 0.5rem;
+	text-align: center;
+}
+
+.run-stat .v {
+	font-family: ui-monospace, monospace;
+	font-size: 1.7rem;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.run-stat .l {
+	font-size: 0.7rem;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.run-stat.bad .v {
+	color: #b3174b;
+}
+
+.run-badge {
+	display: inline-block;
+	padding: 0.15rem 0.5rem;
+	border-radius: 4px;
+	font-size: 0.8rem;
+	font-weight: 600;
+	vertical-align: 0.15em;
+}
+
+.run-badge.running {
+	background: #e3f6ee;
+	color: #00704f;
+}
+
+.run-badge.idle {
+	background: var(--code-bg);
+	color: var(--muted);
+}
+
+.run-badge.error {
+	background: #fde8ef;
+	color: #b3174b;
+}
+
+.run-lastline {
+	font-family: ui-monospace, monospace;
+	font-size: 0.85rem;
+	color: var(--muted);
+	background: var(--surface);
+	border-radius: 6px;
+	padding: 0.75rem 1rem;
+	white-space: pre-wrap;
+	word-break: break-word;
+	min-height: 1.4em;
+}

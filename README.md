@@ -92,8 +92,7 @@ bun run test                       # hermetic tests
 | `GET /health` | `{ "status": "ok" }` |
 | `GET /uptime` | Seconds since isolate start |
 | `GET /timeline` | Index-derived timeline; `?spamaway=0` disables the textfilter, `?spam=N` sets the Quilcast threshold (0–100%) |
-| `GET /runs` | Live archiver run view (polls `/runs/status` every 2 s) |
-| `GET /runs/status` | Run progress object written by the archiver |
+| `GET /runs/status` | Run progress, proxied to the archiver worker (feeds the landing page's live run section) |
 | `GET /status[?fid=]` | Outstanding/completed counts (ETag'd) |
 | `GET /api/cast/:hash` | Rendered markdown + filename for a cast |
 | `GET /api/archive/stats` | Archive stats incl. casts/month histogram |
@@ -131,8 +130,8 @@ Knobs: `PURGE_MIN_AGE_DAYS`, `PURGE_MAX_BATCH` (50), `PURGE_DELAY_MS` (1000),
 - There is no cache to clear: `casts/*`, `out/*`, and `meta/index.json` are
   content-addressed/idempotent, and a fresh run re-tags + re-renders (skip-if-rendered
   makes that cheap). There are no delete paths for archived objects.
-- Stuck "running" badge on `/runs`: the archiver lock takes over after 30 minutes
-  (crashed-run recovery).
+- Stuck "running" badge on the landing page: the archiver lock takes over after 30
+  minutes (crashed-run recovery).
 
 ## Development
 

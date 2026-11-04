@@ -3,7 +3,7 @@
  * one bounded tick of the archiver pipeline. The marker is consumed BEFORE
  * the run (at-least-once semantics); failures are logged, never retried in
  * a loop — the hourly marker re-arms the schedule anyway. Progress is
- * written to meta/run-status.json for the web worker's /runs live view.
+ * written to meta/run-status.json for the landing page's live run section.
  *
  * Crontab wraps this in flock -n on logs/doit.lock — mutual exclusion with
  * any direct `bun run doIt` without extra machinery.

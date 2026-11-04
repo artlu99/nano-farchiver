@@ -37,35 +37,14 @@
     </tbody>
   </table>
   <h2>Archiver run</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>State</th>
-        <th>Phase</th>
-        <th>Started</th>
-        <th>Updated</th>
-        <th>New casts</th>
-        <th>Hydrated</th>
-        <th>Renders</th>
-        <th>Scanned</th>
-        <th>Failures</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td id="run-state">—</td>
-        <td id="run-phase">—</td>
-        <td id="run-started">—</td>
-        <td id="run-updated">—</td>
-        <td id="run-unknown">—</td>
-        <td id="run-hydrated">—</td>
-        <td id="run-renders">—</td>
-        <td id="run-scanned">—</td>
-        <td id="run-failures">—</td>
-      </tr>
-    </tbody>
-  </table>
-  <p id="run-lastline" style="font-family:ui-monospace,monospace;font-size:.85rem;color:#5d6068;min-height:1.2em"></p>
+  <p><span id="run-badge" class="run-badge idle">idle</span> <span id="run-phase" class="run-phase">—</span></p>
+  <div class="run-stats">
+    <div class="run-stat"><div class="v" id="run-hydrated">—</div><div class="l">hydrated</div></div>
+    <div class="run-stat"><div class="v" id="run-renders">—</div><div class="l">renders</div></div>
+    <div class="run-stat" id="run-stat-failures"><div class="v" id="run-failures">—</div><div class="l">failures</div></div>
+  </div>
+  <p class="run-meta">started <span id="run-started">—</span> · updated <span id="run-updated">—</span></p>
+  <p id="run-lastline" class="run-lastline"></p>
   <script src="/static/app.js" defer></script>
   <hr />
   <small>Payments powered by <a href="https://x402.org" target="_blank" rel="noopener noreferrer">x402</a> and <a

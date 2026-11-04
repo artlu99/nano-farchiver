@@ -2,15 +2,14 @@
 	const key = "nano-farchiver:status:all";
 	const outstandingEl = document.getElementById("outstanding-all");
 	const completedEl = document.getElementById("completed-all");
-	if (!outstandingEl || !completedEl) return;
 
 	const ttlMs = 30_000;
 
 	function render(data) {
 		if (!data || typeof data !== "object") return;
-		if (typeof data.outstanding === "number")
+		if (outstandingEl && typeof data.outstanding === "number")
 			outstandingEl.textContent = String(data.outstanding);
-		if (typeof data.completed === "number")
+		if (completedEl && typeof data.completed === "number")
 			completedEl.textContent = String(data.completed);
 	}
 
@@ -64,21 +63,26 @@
 	}
 
 	// Archiver run status: poll /runs/status (the progress object the server
-	// poller writes to R2) and render the live row.
+	// poller writes to R2) and render the live cards.
 	const runEls = {
-		state: document.getElementById("run-state"),
+		badge: document.getElementById("run-badge"),
 		phase: document.getElementById("run-phase"),
 		started: document.getElementById("run-started"),
 		updated: document.getElementById("run-updated"),
-		unknown: document.getElementById("run-unknown"),
 		hydrated: document.getElementById("run-hydrated"),
 		renders: document.getElementById("run-renders"),
-		scanned: document.getElementById("run-scanned"),
 		failures: document.getElementById("run-failures"),
+		statFailures: document.getElementById("run-stat-failures"),
 		lastline: document.getElementById("run-lastline"),
 	};
 	const hasRunRow = Object.values(runEls).every(Boolean);
-	const fmt = (ms) => (ms ? new Date(ms).toLocaleString() : "—");
+	const ago = (ms) => {
+		const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+		if (s < 5) return "just now";
+		if (s < 60) return `${s}s ago`;
+		if (s < 3600) return `${Math.round(s / 60)}m ago`;
+		return new Date(ms).toLocaleString();
+	};
 
 	function renderRun(p) {
 		if (!p || typeof p !== "object") return;
@@ -88,22 +92,29 @@
 		const stale =
 			p.running === true &&
 			(!p.updatedAt || Date.now() - p.updatedAt > STALE_MS);
-		runEls.state.textContent =
-			p.running === true
-				? stale
-					? "stale"
-					: "running"
+		const running = p.running === true && !stale;
+		runEls.badge.textContent = running
+			? "running"
+			: stale
+				? "stale"
 				: p.completedAt
 					? "finished"
 					: "idle";
+		runEls.badge.className = `run-badge ${running ? "running" : stale ? "error" : "idle"}`;
 		runEls.phase.textContent = String(p.phase ?? "—");
-		runEls.started.textContent = fmt(p.startedAt);
-		runEls.updated.textContent = fmt(p.updatedAt);
-		runEls.unknown.textContent = String(p.unknown ?? "—");
+		runEls.started.textContent = p.startedAt ? ago(p.startedAt) : "—";
+		runEls.started.title = p.startedAt
+			? new Date(p.startedAt).toLocaleString()
+			: "";
+		runEls.updated.textContent = p.updatedAt ? ago(p.updatedAt) : "—";
+		runEls.updated.title = p.updatedAt
+			? new Date(p.updatedAt).toLocaleString()
+			: "";
 		runEls.hydrated.textContent = String(p.hydrated ?? "—");
 		runEls.renders.textContent = String(p.renders ?? "—");
-		runEls.scanned.textContent = String(p.scanned ?? "—");
-		runEls.failures.textContent = String(p.failures ?? "—");
+		const failures = p.failures ?? 0;
+		runEls.failures.textContent = String(failures);
+		runEls.statFailures.className = `run-stat${failures > 0 ? " bad" : ""}`;
 		runEls.lastline.textContent = String(p.lastLine ?? "");
 	}
 
@@ -113,8 +124,10 @@
 			if (res.ok) renderRun(await res.json());
 		} catch {}
 	}
-	refreshRun();
-	setInterval(refreshRun, 3_000);
+	if (hasRunRow) {
+		refreshRun();
+		setInterval(refreshRun, 3_000);
+	}
 
 	// Initial hydration + revalidate (stale-while-revalidate) then dynamic polling loop.
 	const now = Date.now();
@@ -122,6 +135,8 @@
 		cached && typeof cached.fetchedAt === "number"
 			? now - cached.fetchedAt
 			: Infinity;
-	if (age > ttlMs) refresh();
-	scheduleNextPoll();
+	if (outstandingEl && completedEl) {
+		if (age > ttlMs) refresh();
+		scheduleNextPoll();
+	}
 })();
