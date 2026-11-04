@@ -7,21 +7,16 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import { fromFarcasterTime, Message, MessageData } from "@farcaster/core";
+import { fromFarcasterTime, MessageData } from "@farcaster/core";
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { cluster } from "radash";
 import { defaultRunContext, type RunContext } from "../ctx";
 import { getCastFromHash } from "../jobs/read";
-import { renderCast } from "../jobs/write";
+import { renderCast, renderCastCoreBody } from "../jobs/write";
 import { ARCHIVER_FID } from "../lib/config";
 import type { RenderSink } from "../sink";
-import { hash2filename, normalizeHash } from "./helpers";
-import {
-	renderEmbedsAsync,
-	renderReplyFooter,
-	renderReplyHeader,
-	renderTopLevelHeader,
-} from "./markdown";
+import { hash2filename, normalizeHash, strip0x } from "./helpers";
+import { renderEmbedsAsync } from "./markdown";
 import { getCasts } from "./neynar";
 import type { SnapMessage } from "./snapchain";
 
@@ -60,15 +55,11 @@ export const messageDataBytes = (msg: SnapMessage): Uint8Array =>
 		MessageData.fromJSON(msg.data as unknown as Record<string, unknown>),
 	).finish();
 
-export const messageBytes = (msg: unknown): Uint8Array =>
-	Message.encode(msg as Parameters<typeof Message.encode>[0]).finish();
-
 const ensureDir = (): void => {
 	mkdirSync(backupsDir(), { recursive: true });
 };
 
-const hashFilename = (hash: string): string =>
-	normalizeHash(hash).replace(/^0x/, "");
+const hashFilename = (hash: string): string => strip0x(normalizeHash(hash));
 
 export const backupBinPath = (hash: string): string =>
 	join(backupsDir(), `${hashFilename(hash)}.bin`);
@@ -143,26 +134,6 @@ export const backupMessage = (msg: SnapMessage): ManifestEntry => {
 		appendFileSync(manifestPath(), `${JSON.stringify(entry)}\n`);
 	}
 	return entry;
-};
-
-/** Update the `verified` flags on an existing manifest entry (last line wins on re-read). */
-export const markManifestVerified = (
-	hash: string,
-	verified: ManifestEntry["verified"],
-): void => {
-	const entries = readManifest();
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const entry = entries[i];
-		if (entry && entry.hash === normalizeHash(hash)) {
-			entry.verified = verified;
-			break;
-		}
-	}
-	ensureDir();
-	writeFileSync(
-		manifestPath(),
-		`${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
-	);
 };
 
 export const writeCheckpoint = (): Checkpoint => {
@@ -343,14 +314,14 @@ const renderHealedFile = async (
 	const rendered = await renderCast(cast, ctx);
 	const replyCount = await countHealedReplies(entry.hash, ctx);
 	const embedBlock = await renderEmbedsAsync(cast.embeds ?? [], ctx);
-	const body = [
-		rendered.parent_hash
-			? await renderReplyHeader(cast, ctx)
-			: await renderTopLevelHeader(cast, ctx),
-		"--",
-		rendered.text + (embedBlock ? `\n\n${embedBlock}` : ""),
-		renderReplyFooter(replyCount),
-	].join("\n");
+	const body = await renderCastCoreBody(
+		rendered.parent_hash,
+		cast,
+		rendered.text,
+		embedBlock,
+		replyCount,
+		ctx,
+	);
 	await sink.write(relPath, body.trim());
 };
 

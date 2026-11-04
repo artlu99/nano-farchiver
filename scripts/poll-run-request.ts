@@ -13,19 +13,19 @@
 import { runtimeContext } from "../src/ctx";
 import { runTick } from "../src/jobs/tick";
 import { ARCHIVER_FID } from "../src/lib/config";
-import { writeRunStatus } from "../src/store/indexModel";
+import { runRequestKey, writeRunStatus } from "../src/store/indexModel";
 import { S3Store, s3ConfigFromEnv } from "../src/store/s3";
 
-const fid = Number(process.env.ARCHIVER_FID ?? ARCHIVER_FID);
+const fid = ARCHIVER_FID;
 const store = new S3Store(s3ConfigFromEnv());
 
-const marker = await store.get("meta/run-request");
+const marker = await store.get(runRequestKey);
 if (!marker) process.exit(0);
 
 console.log(
 	`run-request detected at ${new Date().toISOString()} — consuming marker, running`,
 );
-await store.deleteKey("meta/run-request");
+await store.deleteKey(runRequestKey);
 
 let lastPush = 0;
 let pendingWrite: Promise<unknown> = Promise.resolve();

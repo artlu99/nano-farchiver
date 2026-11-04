@@ -6,11 +6,9 @@
  *
  *   bun scripts/set-run-request.ts
  */
+import { runRequestKey } from "../src/store/indexModel";
 import { S3Store, s3ConfigFromEnv } from "../src/store/s3";
 
 const store = new S3Store(s3ConfigFromEnv());
-await store.put(
-	"meta/run-request",
-	JSON.stringify({ requestedAt: Date.now() }),
-);
+await store.put(runRequestKey, JSON.stringify({ requestedAt: Date.now() }));
 console.log("run requested (meta/run-request set)");

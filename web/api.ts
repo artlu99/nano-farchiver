@@ -1,5 +1,11 @@
 import { hash2filename, normalizeHash } from "../src/lib/helpers";
-import { outKey, settingKey } from "../src/store/indexModel";
+import {
+	DEFAULT_MIN_AGE_DAYS,
+	type PurgePolicy,
+	policyFromEnvValue,
+	policyFromStored,
+} from "../src/lib/policy";
+import { backupManifestKey, outKey, settingKey } from "../src/store/indexModel";
 import { bytesToText } from "../src/store/types";
 import { getIndex } from "./data";
 import type { Env } from "./env";
@@ -75,7 +81,7 @@ export const archiveStats = async (env: Env): Promise<ArchiveStats> => {
 	const index = await getIndex(env);
 	const store = getStore(env);
 	const p = await policy(env);
-	const manifestObj = await store.get("backups/manifest.jsonl");
+	const manifestObj = await store.get(backupManifestKey);
 	const manifest: { verifiedHash: boolean; verifiedSig: boolean }[] = [];
 	if (manifestObj) {
 		for (const line of bytesToText(manifestObj.body).split("\n")) {
@@ -96,26 +102,23 @@ export const archiveStats = async (env: Env): Promise<ArchiveStats> => {
 	return statsFromIndex(index, p, manifest);
 };
 
-/** Purge policy from settings objects: fid-scoped > global > env > default 7d. */
-export const policy = async (
-	env: Env,
-): Promise<{ minAgeDays: number; source: string }> => {
+/** Purge policy from settings objects — same pure core as lib/config.ts. */
+export const policy = async (env: Env): Promise<PurgePolicy> => {
 	const store = getStore(env);
 	const fid = archiverFid(env);
-	const keys = [`purge_min_age_days:${fid}`, "purge_min_age_days"];
-	for (const key of keys) {
+	const values: (string | undefined)[] = [];
+	for (const key of [`purge_min_age_days:${fid}`, "purge_min_age_days"]) {
 		const obj = await store.get(settingKey(key));
 		if (!obj) continue;
-		const parsed = Number(JSON.parse(bytesToText(obj.body)).value);
-		if (Number.isFinite(parsed) && parsed >= 0) {
-			return { minAgeDays: parsed, source: "settings" };
+		values.push(JSON.parse(bytesToText(obj.body)).value);
+	}
+	return (
+		policyFromStored(values) ??
+		policyFromEnvValue(env.PURGE_MIN_AGE_DAYS) ?? {
+			minAgeDays: DEFAULT_MIN_AGE_DAYS,
+			source: "default",
 		}
-	}
-	const envValue = Number(env.PURGE_MIN_AGE_DAYS);
-	if (Number.isFinite(envValue) && envValue >= 0) {
-		return { minAgeDays: envValue, source: "env" };
-	}
-	return { minAgeDays: 7, source: "default" };
+	);
 };
 
 /** Web-worker SHA-1 for the /status ETag (WebCrypto — async, Workers-safe). */

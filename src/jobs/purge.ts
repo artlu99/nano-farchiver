@@ -18,7 +18,7 @@ import {
 	readManifest,
 } from "../lib/backup";
 import { ARCHIVER_FID, getPolicy } from "../lib/config";
-import { normalizeHash } from "../lib/helpers";
+import { normalizeHash, strip0x } from "../lib/helpers";
 import type { SnapMessage } from "../lib/snapchain";
 import {
 	snapCastById,
@@ -49,7 +49,7 @@ export interface ReactionSets {
 }
 
 const signerPrivateKey = (): Uint8Array => {
-	const raw = process.env.FARCASTER_SIGNER_PRIVATE_KEY?.replace(/^0x/, "");
+	const raw = strip0x(process.env.FARCASTER_SIGNER_PRIVATE_KEY ?? "");
 	invariant(raw, "FARCASTER_SIGNER_PRIVATE_KEY is required for this operation");
 	invariant(
 		raw.length === 64,
@@ -635,9 +635,8 @@ if (import.meta.main) {
 		} else if (sub === "verify") {
 			const sampleIdx = rest.indexOf("--sample");
 			const sample = sampleIdx >= 0 ? Number(rest[sampleIdx + 1]) : undefined;
-			const { ok, failed } = await verifyBackups(sample);
+			const { failed } = await verifyBackups(sample);
 			process.exitCode = failed > 0 ? 1 : 0;
-			void ok;
 		} else if (sub === "checkpoint") {
 			const done = await checkpoint();
 			console.log(

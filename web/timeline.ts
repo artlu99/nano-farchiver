@@ -1,6 +1,6 @@
 import { escapeHtml, hash2filename } from "../src/lib/helpers";
 import type { ArchiveIndex } from "../src/store/indexModel";
-import { breadcrumb, renderPage } from "./page";
+import { renderPage } from "./page";
 import { getSpamScores, type ScoreFetcher } from "./spam-scores";
 
 export interface TimelineOptions {
@@ -221,8 +221,3 @@ export const timelineHtml = async (
 		cacheControl: "no-store", // parameter-dependent page (?spam, ?spamaway)
 	});
 };
-
-export const timelineLink = (): string =>
-	`<div class="breadcrumb"><a href="/browse">out</a> / <span>timeline</span></div>`;
-
-export const timelineBreadcrumb = (): string => breadcrumb([]);

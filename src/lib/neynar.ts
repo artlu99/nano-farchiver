@@ -14,7 +14,7 @@ import {
 	markCastsDeleted,
 	tagCasts,
 } from "../jobs/read";
-import { absentHashes } from "./helpers";
+import { absentHashes, expBackoff } from "./helpers";
 import { withTimeout } from "./timeouts";
 import { timeAsync } from "./timers";
 
@@ -27,16 +27,37 @@ const feedCache = new Map<number, string>();
 const repliesCache = new Map<number, string>();
 const conversationCache = new Map<string, string>();
 
-export const clearRunCache = (): void => {
-	feedCache.clear();
-	repliesCache.clear();
-	conversationCache.clear();
-};
-
 const api = fetcher({
 	base: "https://haatz.quilibrium.com/v2",
 	headers: { "User-Agent": "curl/8.5.0" },
 });
+
+/** Verbose dump of an upstream fetch failure — shared by both paginators. */
+const logUpstreamFetchError = (context: string, error: unknown): void => {
+	console.error(context);
+	if (error instanceof Error) {
+		console.error("Error message:", error.message);
+		console.error("Error stack:", error.stack);
+		if ("status" in error) {
+			console.error("HTTP status:", (error as { status?: number }).status);
+		}
+		if ("statusText" in error) {
+			console.error(
+				"HTTP statusText:",
+				(error as { statusText?: string }).statusText,
+			);
+		}
+		if ("response" in error) {
+			console.error(
+				"Response:",
+				JSON.stringify((error as { response?: unknown }).response, null, 2),
+			);
+		}
+	} else {
+		console.error("Error object:", error);
+		console.error("Error stringified:", JSON.stringify(error, null, 2));
+	}
+};
 
 /**
  * Wrapper for retry that short-circuits on 400 (Bad Request) errors
@@ -124,24 +145,12 @@ const paginateFeedResponse = async (
 			if (cursor) {
 				params.cursor = cursor;
 			}
-
-			console.log("fetching page:", url, params);
-			const res = await api.get<FeedResponse>(url, { query: params });
-			return res;
+			return api.get<FeedResponse>(url, { query: params });
 		};
 
 		try {
 			const res = await retryWithSkip(
-				{
-					times: 3,
-					backoff: (i) => {
-						const delay = Math.min(1000 * 2 ** i, 30000);
-						if (i > 0) {
-							console.log(`Retrying after ${delay}ms (attempt ${i + 1}/5)`);
-						}
-						return delay;
-					},
-				},
+				{ times: 3, backoff: expBackoff },
 				fetchPage,
 			);
 
@@ -193,32 +202,10 @@ const paginateFeedResponse = async (
 				hasMore = false; // Stop to avoid infinite loop
 			}
 		} catch (error) {
-			console.error(
+			logUpstreamFetchError(
 				`Error fetching paginated page (url: ${url}, cursor: ${cursor})`,
+				error,
 			);
-			if (error instanceof Error) {
-				console.error("Error message:", error.message);
-				console.error("Error stack:", error.stack);
-				// Check for additional error properties
-				if ("status" in error) {
-					console.error("HTTP status:", (error as { status?: number }).status);
-				}
-				if ("statusText" in error) {
-					console.error(
-						"HTTP statusText:",
-						(error as { statusText?: string }).statusText,
-					);
-				}
-				if ("response" in error) {
-					console.error(
-						"Response:",
-						JSON.stringify((error as { response?: unknown }).response, null, 2),
-					);
-				}
-			} else {
-				console.error("Error object:", error);
-				console.error("Error stringified:", JSON.stringify(error, null, 2));
-			}
 			// Gracefully return what we have so far
 			break;
 		}
@@ -237,59 +224,52 @@ const paginateFeedResponse = async (
 	} as unknown as FeedResponse;
 };
 
-export const getCronFeed = async (
+/**
+ * Cached, fully-paginated feed fetch. The per-fid cache is a within-run
+ * memo: the first caller pays the pagination, everyone else parses JSON.
+ */
+const cachedPaginatedFeed = async (
+	cache: Map<number, string>,
 	fid: number,
-	ctx: RunContext = defaultRunContext(),
+	url: string,
+	limit: number,
+	baseParams: Record<string, string | number | boolean>,
+	ctx: RunContext,
 ): Promise<FeedResponse> => {
-	// Check cache first
-	const cached = feedCache.get(fid);
+	const cached = cache.get(fid);
 	if (cached) {
 		return JSON.parse(cached) as FeedResponse;
 	}
+	const res = await paginateFeedResponse(url, limit, baseParams, ctx);
+	cache.set(fid, JSON.stringify(res));
+	return res;
+};
 
-	// Fetch all pages
-	const res = await paginateFeedResponse(
+export const getCronFeed = (
+	fid: number,
+	ctx: RunContext = defaultRunContext(),
+): Promise<FeedResponse> =>
+	cachedPaginatedFeed(
+		feedCache,
+		fid,
 		"/farcaster/feed/user/casts/",
 		150,
-		{
-			include_replies: false,
-			fid,
-		},
+		{ include_replies: false, fid },
 		ctx,
 	);
 
-	// Cache the complete paginated result
-	feedCache.set(fid, JSON.stringify(res));
-
-	return res;
-};
-
-export const getReplies = async (
+export const getReplies = (
 	fid: number,
 	ctx: RunContext = defaultRunContext(),
-): Promise<FeedResponse> => {
-	// Check cache first
-	const cached = repliesCache.get(fid);
-	if (cached) {
-		return JSON.parse(cached) as FeedResponse;
-	}
-
-	// Fetch all pages
-	const res = await paginateFeedResponse(
+): Promise<FeedResponse> =>
+	cachedPaginatedFeed(
+		repliesCache,
+		fid,
 		"/farcaster/feed/user/replies_and_recasts/",
 		50,
-		{
-			filter: "replies",
-			fid,
-		},
+		{ filter: "replies", fid },
 		ctx,
 	);
-
-	// Cache the complete paginated result
-	repliesCache.set(fid, JSON.stringify(res));
-
-	return res;
-};
 
 /**
  * Helper function to paginate through Conversation responses
@@ -313,23 +293,12 @@ const paginateConversation = async (
 			if (cursor) {
 				params.cursor = cursor;
 			}
-
-			// Log request details for debugging
-			console.log(
-				`Fetching conversation page: ${url} with params:`,
-				JSON.stringify(params, null, 2),
-			);
-
-			const res = await api.get<Conversation>(url, { query: params });
-			return res;
+			return api.get<Conversation>(url, { query: params });
 		};
 
 		try {
 			const res = await retryWithSkip(
-				{
-					times: 5,
-					backoff: (i) => Math.min(1000 * 2 ** i, 30000), // Exponential backoff, max 30s
-				},
+				{ times: 5, backoff: expBackoff },
 				fetchPage,
 			);
 
@@ -367,32 +336,10 @@ const paginateConversation = async (
 				hasMore = false;
 			}
 		} catch (error) {
-			console.error(
+			logUpstreamFetchError(
 				`Error fetching paginated conversation page (url: ${url}, cursor: ${cursor})`,
+				error,
 			);
-			if (error instanceof Error) {
-				console.error("Error message:", error.message);
-				console.error("Error stack:", error.stack);
-				// Check for additional error properties
-				if ("status" in error) {
-					console.error("HTTP status:", (error as { status?: number }).status);
-				}
-				if ("statusText" in error) {
-					console.error(
-						"HTTP statusText:",
-						(error as { statusText?: string }).statusText,
-					);
-				}
-				if ("response" in error) {
-					console.error(
-						"Response:",
-						JSON.stringify((error as { response?: unknown }).response, null, 2),
-					);
-				}
-			} else {
-				console.error("Error object:", error);
-				console.error("Error stringified:", JSON.stringify(error, null, 2));
-			}
 			// Gracefully return what we have so far
 			break;
 		}
@@ -417,7 +364,6 @@ export const getConversation = async (hash: string): Promise<Conversation> => {
 		return JSON.parse(cached) as Conversation;
 	}
 
-	console.log("getting conversation for", hash);
 	// Fetch all pages
 	const res = await timeAsync("conversation", () =>
 		paginateConversation("/farcaster/cast/conversation/", {

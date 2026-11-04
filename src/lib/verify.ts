@@ -7,7 +7,7 @@ import {
 	readManifest,
 	sha256Hex,
 } from "./backup";
-import { normalizeHash } from "./helpers";
+import { normalizeHash, strip0x } from "./helpers";
 import { snapOnChainSigners } from "./snapchain";
 
 export type VerifyLevel = "hash+sig" | "hash+sig+signer";
@@ -105,14 +105,12 @@ export const gateFromDisk = async (
 		}
 
 		// 2. authenticity: Ed25519(signature, envelope hash, signer)
-		const hashBytes = new Uint8Array(
-			Buffer.from(normalized.replace(/^0x/, ""), "hex"),
-		);
+		const hashBytes = new Uint8Array(Buffer.from(strip0x(normalized), "hex"));
 		const signature = new Uint8Array(
 			Buffer.from(json.signature ?? "", "base64"),
 		);
 		const signerBytes = new Uint8Array(
-			Buffer.from((json.signer ?? "").replace(/^0x/, ""), "hex"),
+			Buffer.from(strip0x(json.signer ?? ""), "hex"),
 		);
 		const sigResult = await ed25519.verifyMessageHashSignature(
 			signature,

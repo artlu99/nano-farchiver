@@ -102,7 +102,6 @@ beforeAll(async () => {
 		].join("\n"),
 	);
 	await putJSON(store, "config/textfilters.jsonl", '"spamword"\n');
-	void loadIndex;
 });
 
 describe("web routes (bucket-backed)", () => {

@@ -1,6 +1,7 @@
 import type { Message } from "@farcaster/core";
 import { fetcher } from "itty-fetcher";
 import { retry, sift } from "radash";
+import { expBackoff, normalizeHash } from "./helpers";
 import { timeAsync } from "./timers";
 
 const PAGE_SIZE = 100;
@@ -88,12 +89,10 @@ const fetchAllSnapMessages = async (
 			pageSize: PAGE_SIZE,
 		};
 		if (pageToken) query.pageToken = pageToken;
-		const res = await retry(
-			{ times: 5, backoff: (i) => Math.min(1000 * 2 ** i, 30000) },
-			() =>
-				api.get<{ messages?: SnapMessage[]; nextPageToken?: string }>(path, {
-					query,
-				}),
+		const res = await retry({ times: 5, backoff: expBackoff }, () =>
+			api.get<{ messages?: SnapMessage[]; nextPageToken?: string }>(path, {
+				query,
+			}),
 		);
 		all.push(...(res.messages ?? []));
 		if (isEndPageToken(res.nextPageToken) || all.length >= maxMessages) {
@@ -141,9 +140,7 @@ export const snapHasReaction = async (
 	targetHash: string,
 	reactionType: "Like" | "Recast",
 ): Promise<boolean> => {
-	const normalized = targetHash.startsWith("0x")
-		? targetHash
-		: `0x${targetHash}`;
+	const normalized = normalizeHash(targetHash);
 	let pageToken: string | undefined;
 	for (;;) {
 		const query: Record<string, string | number | boolean> = {
@@ -153,13 +150,11 @@ export const snapHasReaction = async (
 			pageSize: PAGE_SIZE,
 		};
 		if (pageToken) query.pageToken = pageToken;
-		const res = await retry(
-			{ times: 5, backoff: (i) => Math.min(1000 * 2 ** i, 30000) },
-			() =>
-				api.get<{ messages?: SnapMessage[]; nextPageToken?: string }>(
-					"/reactionsByTarget",
-					{ query },
-				),
+		const res = await retry({ times: 5, backoff: expBackoff }, () =>
+			api.get<{ messages?: SnapMessage[]; nextPageToken?: string }>(
+				"/reactionsByTarget",
+				{ query },
+			),
 		);
 		for (const msg of res.messages ?? []) {
 			if (msg.data?.fid === fid) return true;
@@ -172,12 +167,10 @@ export const snapHasReaction = async (
 export const snapOnChainSigners = async (
 	fid: number,
 ): Promise<SnapSignerEvent[]> => {
-	const res = await retry(
-		{ times: 5, backoff: (i) => Math.min(1000 * 2 ** i, 30000) },
-		() =>
-			api.get<{ events?: SnapSignerEvent[] }>("/onChainSignersByFid", {
-				query: { fid, pageSize: 100 },
-			}),
+	const res = await retry({ times: 5, backoff: expBackoff }, () =>
+		api.get<{ events?: SnapSignerEvent[] }>("/onChainSignersByFid", {
+			query: { fid, pageSize: 100 },
+		}),
 	);
 	return res.events ?? [];
 };
@@ -225,46 +218,21 @@ const getCastsByParent = async (fid: number, hash: string) => {
 		};
 
 		try {
-			const res = await retry(
-				{
-					times: 5,
-					backoff: (i) => Math.min(1000 * 2 ** i, 30000), // Exponential backoff, max 30s
-				},
-				fetchPage,
-			);
+			const res = await retry({ times: 5, backoff: expBackoff }, fetchPage);
 
 			const messages = sift(res.messages.filter((r) => r.data?.castAddBody));
 			allMessages.push(...messages);
 
-			// Get the page token
+			// The API returns base64-encoded "[null,null]" as the end token;
+			// no token means no more pages either.
 			const newPageToken = res.nextPageToken;
-
-			// Decode the token to check if it's the end token
-			// The API returns base64-encoded "[null,null]" when there are no more pages
-			let isEndToken = false;
-			if (newPageToken) {
-				try {
-					const decodedToken = Buffer.from(newPageToken, "base64").toString(
-						"utf-8",
-					);
-					isEndToken = decodedToken === "[null,null]";
-				} catch {
-					// If decoding fails, treat as invalid token (end of pagination)
-					isEndToken = true;
-				}
-			} else {
-				// No token means no more pages
-				isEndToken = true;
-			}
-
-			// Update pageToken for next iteration
 			pageToken = newPageToken;
 
 			// Determine if there are more pages:
 			// - Stop if we got the end token (decodes to [null,null])
 			// - Continue if we have a valid token AND got at least PAGE_SIZE messages
 			// Note: API returns 2x PAGE_SIZE (up to 200) when there are more pages
-			hasMore = !isEndToken && messages.length >= PAGE_SIZE;
+			hasMore = !isEndPageToken(newPageToken) && messages.length >= PAGE_SIZE;
 		} catch (error) {
 			console.error(
 				`Error fetching castsByParent page (fid: ${fid}, hash: ${hash}, pageToken: ${pageToken})`,

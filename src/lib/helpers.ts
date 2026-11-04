@@ -32,14 +32,15 @@ export function escapeHtml(text: string): string {
 		.replace(/"/g, "&quot;");
 }
 
-export function utcDayKey(isoTimestamp: string): string {
-	const d = new Date(isoTimestamp);
-	return d.toISOString().slice(0, 10);
-}
-
 export const normalizeHash = (hash: string) => {
 	return hash.startsWith("0x") ? hash : `0x${hash}`;
 };
+
+/** The no-0x form used by hash-bearing bucket keys and filenames. */
+export const strip0x = (hash: string): string => hash.replace(/^0x/, "");
+
+/** Shared retry backoff: exponential, capped at 30 s (neynar + snapchain). */
+export const expBackoff = (i: number): number => Math.min(1000 * 2 ** i, 30000);
 
 export interface User {
 	username: string | null;

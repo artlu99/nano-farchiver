@@ -9,8 +9,6 @@ import {
 } from "@farcaster/core";
 import type { SnapMessage } from "../lib/snapchain";
 
-export const FARCASTER_EPOCH_S = 1609459200;
-
 export interface SignedFixture {
 	hashHex: string;
 	signerHex: string;

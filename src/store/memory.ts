@@ -79,12 +79,4 @@ export class MemoryStore implements ArchiveStore {
 		}
 		return { keys, prefixes: [...prefixSet].sort(), truncated: false };
 	}
-
-	get size(): number {
-		return this.objects.size;
-	}
-
-	clear(): void {
-		this.objects.clear();
-	}
 }

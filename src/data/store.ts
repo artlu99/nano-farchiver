@@ -309,19 +309,7 @@ export class StoreArchiveData implements ArchiveData {
 				draft.users[String(fid)] = { username };
 			}
 			for (const { hash, cast } of freshCasts) {
-				const parentHash = cast.parent_hash
-					? normalizeHash(cast.parent_hash)
-					: null;
-				const parentFid = cast.parent_author?.fid ?? null;
-				const tsMs = cast.timestamp ? Date.parse(cast.timestamp) : Number.NaN;
-				draft.casts[hash] = [
-					cast.author?.fid ?? 0,
-					Number.isFinite(tsMs) ? tsMs : 0,
-					parentHash,
-					parentFid,
-					0,
-					previewOf(cast.text ?? ""),
-				];
+				draft.casts[hash] = indexEntryFor(cast);
 				const quotes = [...new Set(quoteHashes(cast))];
 				if (quotes.length > 0) {
 					draft.quotes[hash] = [

@@ -10,11 +10,6 @@ import type { ArchiveIndex } from "../src/store/indexModel";
 export interface PageOptions {
 	title: string;
 	bodyHtml: string;
-}
-
-export interface PageOptions {
-	title: string;
-	bodyHtml: string;
 	/** Timeline is parameter-dependent → no-store; other pages cache at the edge. */
 	cacheControl?: string;
 }

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { hash2filename, normalizeHash } from "../src/lib/helpers";
+import { runStatusKey } from "../src/store/indexModel";
 import { archiveStats, castByHash, policy, status } from "./api";
 import {
 	browseFileHtml,
@@ -10,7 +11,7 @@ import {
 	listUsernames,
 	notFoundHtml,
 } from "./browse";
-import { getIndex } from "./data";
+import { getIndex, getTextfilters } from "./data";
 import type { Env } from "./env";
 import { archiverFid, gatedUsername, getStore } from "./env";
 import { installFacilitatorFetch } from "./facilitator-fetch";
@@ -39,26 +40,7 @@ app.get("/timeline", async (c) => {
 	try {
 		const index = await getIndex(c.env);
 		const spamaway = c.req.query("spamaway") !== "0";
-		const textfiltersObj = await getStore(c.env).get(
-			"config/textfilters.jsonl",
-		);
-		const textfilters: string[] = [];
-		if (textfiltersObj) {
-			for (const line of new TextDecoder()
-				.decode(textfiltersObj.body)
-				.split(/\r?\n/)) {
-				const t = line.trim();
-				if (!t) continue;
-				try {
-					const parsed: unknown = JSON.parse(t);
-					if (typeof parsed === "string" && parsed.trim()) {
-						textfilters.push(parsed.trim());
-					}
-				} catch {
-					// skip malformed filter lines
-				}
-			}
-		}
+		const textfilters = await getTextfilters(getStore(c.env));
 		return timelineHtml(index, {
 			limit: TIMELINE_LIMIT,
 			previewLength: TIMELINE_PREVIEW_LENGTH,
@@ -112,7 +94,7 @@ app.post("/doIt", async (c) => {
 /** GET /runs/status — the run progress object written by the archiver. */
 app.get("/runs/status", async (c) => {
 	try {
-		const obj = await getStore(c.env).get("meta/run-status.json");
+		const obj = await getStore(c.env).get(runStatusKey);
 		if (!obj) return c.json({ running: false, phase: "idle" });
 		return c.json(JSON.parse(new TextDecoder().decode(obj.body)));
 	} catch {

@@ -18,8 +18,6 @@ export interface Env {
 	S3_ACCESS_KEY_ID: string;
 	S3_SECRET_ACCESS_KEY: string;
 	ARCHIVER_FID?: string;
-	/** Base URL of the archiver service — superseded by the ARCHIVER binding. */
-	ARCHIVER_URL?: string;
 	PURGE_MIN_AGE_DAYS?: string;
 	/** The one username whose files sit behind the x402 paywall. */
 	X402_USERNAME?: string;

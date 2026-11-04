@@ -1,60 +1,42 @@
 import { defaultRunContext, type RunContext } from "../ctx";
+import {
+	DEFAULT_MIN_AGE_DAYS,
+	minAgeSettingKey,
+	PURGE_MIN_AGE_KEY,
+	type PurgePolicy,
+	policyFromEnvValue,
+	policyFromStored,
+} from "./policy";
 
 export const ARCHIVER_FID = Number(process.env.ARCHIVER_FID ?? 3319217);
 
-const MIN_AGE_KEY = "purge_min_age_days";
-const DEFAULT_MIN_AGE_DAYS = 7;
-
-export interface PurgePolicy {
-	minAgeDays: number;
-	source: "settings" | "env" | "default";
-}
+export type { PurgePolicy };
 
 const policyKeys = (fid?: number): string[] =>
-	fid !== undefined ? [`${MIN_AGE_KEY}:${fid}`, MIN_AGE_KEY] : [MIN_AGE_KEY];
-
-const fromStored = (value: string): PurgePolicy | undefined => {
-	const parsed = Number(value);
-	return Number.isFinite(parsed) && parsed >= 0
-		? { minAgeDays: parsed, source: "settings" }
-		: undefined;
-};
-
-const fromEnv = (): PurgePolicy | undefined => {
-	const env = Number(process.env.PURGE_MIN_AGE_DAYS);
-	return Number.isFinite(env) && env >= 0
-		? { minAgeDays: env, source: "env" }
-		: undefined;
-};
+	fid !== undefined
+		? [minAgeSettingKey(fid), PURGE_MIN_AGE_KEY]
+		: [PURGE_MIN_AGE_KEY];
 
 /**
- * Effective purge policy. Precedence: fid-scoped settings row > global
- * settings row > PURGE_MIN_AGE_DAYS env > default. Publicly inspectable via
- * GET /api/policy — never treat as secret.
+ * Effective purge policy for the purge CLI. Precedence: fid-scoped settings
+ * row > global settings row > PURGE_MIN_AGE_DAYS env > default — the pure
+ * core lives in lib/policy.ts (web/api.ts resolves the same rows from the
+ * bucket).
  */
 export const getPolicy = async (options?: {
 	fid?: number;
 	ctx?: RunContext;
 }): Promise<PurgePolicy> => {
 	const ctx = options?.ctx ?? defaultRunContext();
+	const values: (string | undefined)[] = [];
 	for (const key of policyKeys(options?.fid)) {
-		const stored = await ctx.data.getSetting(key);
-		const policy = stored !== undefined ? fromStored(stored) : undefined;
-		if (policy) return policy;
+		values.push(await ctx.data.getSetting(key));
 	}
-	return fromEnv() ?? { minAgeDays: DEFAULT_MIN_AGE_DAYS, source: "default" };
-};
-
-export const setPolicy = async (
-	minAgeDays: number,
-	options?: { fid?: number; ctx?: RunContext },
-): Promise<PurgePolicy> => {
-	if (!Number.isFinite(minAgeDays) || minAgeDays < 0) {
-		throw new Error(`invalid min_age_days: ${minAgeDays}`);
-	}
-	const key =
-		options?.fid !== undefined ? `${MIN_AGE_KEY}:${options.fid}` : MIN_AGE_KEY;
-	const ctx = options?.ctx ?? defaultRunContext();
-	await ctx.data.setSetting(key, String(minAgeDays));
-	return { minAgeDays, source: "settings" };
+	return (
+		policyFromStored(values) ??
+		policyFromEnvValue(process.env.PURGE_MIN_AGE_DAYS) ?? {
+			minAgeDays: DEFAULT_MIN_AGE_DAYS,
+			source: "default",
+		}
+	);
 };

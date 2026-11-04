@@ -1,13 +1,13 @@
-import { StoreArchiveData } from "../src/data/store";
 import type { RunContext } from "../src/ctx";
+import { StoreArchiveData } from "../src/data/store";
 import { runTick, type TickResult } from "../src/jobs/tick";
+import { StoreRenderSink } from "../src/sink";
 import {
+	runRequestKey,
 	runStatusKey,
-	type ArchiveIndex,
 	writeRunStatus,
 } from "../src/store/indexModel";
 import { S3Store } from "../src/store/s3";
-import { StoreRenderSink } from "../src/sink";
 
 /**
  * Archiver worker: runs the archive pipeline on Cloudflare.
@@ -134,12 +134,12 @@ const handleRun = async (env: Env): Promise<Response> => {
 
 const handleStatus = async (env: Env): Promise<Response> => {
 	const s = getStore(env);
-	let progress: unknown = undefined;
+	let progress: unknown;
 	try {
 		const obj = await s.get(runStatusKey);
 		if (obj) progress = JSON.parse(new TextDecoder().decode(obj.body));
 	} catch {}
-	
+
 	const obj = await s.get(LOCK_KEY);
 	let running = false;
 	let takenAt: number | undefined;
@@ -178,7 +178,7 @@ export default {
 		// poller watches — one PUT is well inside the free-plan CPU budget.
 		if (request.method === "POST" && url.pathname === "/runs/request") {
 			await getStore(env).put(
-				"meta/run-request",
+				runRequestKey,
 				JSON.stringify({ requestedAt: Date.now() }),
 			);
 			return Response.json({ requested: true });

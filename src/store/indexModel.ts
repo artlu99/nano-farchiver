@@ -1,4 +1,4 @@
-import { normalizeHash } from "../lib/helpers";
+import { normalizeHash, strip0x } from "../lib/helpers";
 import type { ArchiveStore, PutOptions, PutResult } from "./types";
 import { bytesToText, PreconditionFailedError } from "./types";
 
@@ -9,7 +9,7 @@ import { bytesToText, PreconditionFailedError } from "./types";
 // builders so the old double-form lookups never leak into store callers.
 // ---------------------------------------------------------------------------
 
-const no0x = (hash: string): string => normalizeHash(hash).replace(/^0x/, "");
+const no0x = (hash: string): string => strip0x(normalizeHash(hash));
 
 export const INDEX_KEY = "meta/index.json";
 export const castKey = (hash: string): string => `casts/${no0x(hash)}.json`;
@@ -26,21 +26,17 @@ export const reactionKey = (
 export const fidRegistryKey = (fid: number): string => `fids/${fid}.json`;
 export const outKey = (username: string, filename: string): string =>
 	`out/${username}/${filename}`;
-export const backupBinKey = (hash: string): string =>
-	`backups/${no0x(hash)}.bin`;
-export const backupJsonKey = (hash: string): string =>
-	`backups/${no0x(hash)}.json`;
 export const backupManifestKey = "backups/manifest.jsonl";
 export const backupCheckpointKey = "backups/CHECKPOINT.json";
 export const textfiltersKey = "config/textfilters.jsonl";
 export const runStatusKey = "meta/run-status.json";
+export const runRequestKey = "meta/run-request";
 
 /** Last-writer-wins progress object for the /runs live view (no If-Match). */
 export const writeRunStatus = (
 	store: ArchiveStore,
 	progress: unknown,
 ): Promise<PutResult> => store.put(runStatusKey, JSON.stringify(progress));
-export const cursorKey = (fid: number): string => `meta/cursor/${fid}.json`;
 
 // ---------------------------------------------------------------------------
 // Index shape — `casts/*` etc. objects are truth; this is the rebuildable

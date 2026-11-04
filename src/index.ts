@@ -3,7 +3,6 @@ import { drainMissingCasts, queueLoop } from "./jobs/read";
 import { writeLoop } from "./jobs/write";
 import { selfHealFromBackups } from "./lib/backup";
 import { ARCHIVER_FID } from "./lib/config";
-import { pluralize } from "./lib/helpers";
 import { getCronFeed, getReplies } from "./lib/neynar";
 import { resetTimers, timeAsync, timerReport } from "./lib/timers";
 
@@ -21,10 +20,6 @@ export const doIt = async (fid: number, ctx: RunContext = runtimeContext()) => {
 		resetTimers();
 		const casts = await getCronFeed(fid, ctx);
 		const replies = await getReplies(fid, ctx);
-		console.log(pluralize(casts.casts.length, "cast"));
-		console.log(casts.next?.cursor ?? "no cursor");
-		console.log(pluralize(replies.casts.length, "reply", "replies"));
-		console.log(replies.next?.cursor ?? "no cursor");
 		await timeAsync("queueLoop", () =>
 			queueLoop(
 				[...casts.casts, ...replies.casts],

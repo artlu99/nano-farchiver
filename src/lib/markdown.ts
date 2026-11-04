@@ -11,7 +11,7 @@ import {
 	getUserFromFid,
 } from "../jobs/read";
 import { renderCast } from "../jobs/write";
-import { hash2filename, normalizeHash, pluralize } from "./helpers";
+import { hash2filename, normalizeHash, pluralize, strip0x } from "./helpers";
 
 const IMAGE_URL_RE = /\.(png|jpe?g|gif|webp|avif)(\?|$)/i;
 const QUOTE_PREVIEW_LENGTH = 200;
@@ -39,7 +39,7 @@ export const renderTopLevelHeader = async (
 	const renderedCast = await renderCast(cast, ctx);
 	return `
 ---
-hash: ${renderedCast.hash.replace(/^0x/, "")}
+hash: ${strip0x(renderedCast.hash)}
 timestamp: ${renderedCast.timestamp}
 fid: ${renderedCast.fid}
 ---
@@ -101,7 +101,7 @@ export const renderReplyHeader = async (
 			: undefined;
 
 	const frontmatter = [
-		`hash: ${renderedCast.hash.replace(/^0x/, "")}`,
+		`hash: ${strip0x(renderedCast.hash)}`,
 		`timestamp: ${renderedCast.timestamp}`,
 		`fid: ${renderedCast.fid}`,
 	];
@@ -109,14 +109,10 @@ export const renderReplyHeader = async (
 		frontmatter.push(`parent_fid: ${renderedCast.parent_fid}`);
 	}
 	if (renderedCast.parent_hash) {
-		frontmatter.push(
-			`parent_hash: ${renderedCast.parent_hash.replace(/^0x/, "")}`,
-		);
+		frontmatter.push(`parent_hash: ${strip0x(renderedCast.parent_hash)}`);
 	}
 	if (cast.thread_hash) {
-		frontmatter.push(
-			`root_parent_hash: ${cast.thread_hash.replace(/^0x/, "")}`,
-		);
+		frontmatter.push(`root_parent_hash: ${strip0x(cast.thread_hash)}`);
 	}
 
 	return `

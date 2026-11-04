@@ -6,9 +6,6 @@ import { normalizeHash, type User } from "../lib/helpers";
 import { getCasts, getConversation } from "../lib/neynar";
 import { getUserFromShim } from "../lib/shim";
 import { traverse } from "../lib/snapchain";
-import { renderCast } from "./write";
-
-const VERBOSE = false;
 
 export const isCastDeleted = (
 	hash: string,
@@ -189,18 +186,10 @@ export const processQueuedCast = async (
 	if (firstRejected) {
 		throw (firstRejected as PromiseRejectedResult).reason;
 	}
-	if (VERBOSE) console.log(await renderCast(c));
 };
 
 const tagThreadConversation = async (threadHash: string, ctx: RunContext) => {
 	const conversation = await getConversation(threadHash);
-	if (VERBOSE) {
-		console.log(
-			(conversation.conversation.chronological_parent_casts ?? []).length,
-		);
-		console.log(conversation.conversation.cast.direct_replies.length);
-		console.log(conversation.next?.cursor ?? "no cursor");
-	}
 	await tagCasts(
 		[
 			conversation.conversation.cast,

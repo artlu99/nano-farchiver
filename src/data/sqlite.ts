@@ -1,6 +1,6 @@
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { getDb } from "../lib/db";
-import { normalizeHash, quoteHashes, type User } from "../lib/helpers";
+import { normalizeHash, quoteHashes, strip0x, type User } from "../lib/helpers";
 import type { RenderedEntryRef, RenderedIndex } from "../store/indexModel";
 import type {
 	ArchiveData,
@@ -17,7 +17,7 @@ import type {
 export class SqliteArchiveData implements ArchiveData {
 	async isDeleted(hash: string): Promise<boolean> {
 		const with0x = normalizeHash(hash);
-		const without0x = with0x.replace(/^0x/, "");
+		const without0x = strip0x(with0x);
 		const db = getDb();
 		const row =
 			(db
@@ -332,5 +332,5 @@ WHERE NOT EXISTS (SELECT 1 FROM casts c WHERE c.hash = cast_quotes.quoted_hash)
 
 const splitForms = (hash: string): [string, string] => {
 	const with0x = normalizeHash(hash);
-	return [with0x, with0x.replace(/^0x/, "")];
+	return [with0x, strip0x(with0x)];
 };

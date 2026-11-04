@@ -1,6 +1,11 @@
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import { defaultRunContext, type RunContext } from "../ctx";
-import { hash2filename, normalizeHash, pluralize } from "../lib/helpers";
+import {
+	hash2filename,
+	normalizeHash,
+	pluralize,
+	strip0x,
+} from "../lib/helpers";
 import {
 	embedsMissingFromFile,
 	renderEmbedsAsync,
@@ -127,6 +132,30 @@ export const renderCast = async (cast: Cast, ctx?: RunContext) => {
 	};
 };
 
+/**
+ * The shared core of a rendered cast file: header, `--`, text+embeds,
+ * reply-count footer. castsLoop appends the channel block; self-heal
+ * (lib/backup.ts) writes the core alone for rebuilt purged casts.
+ */
+export const renderCastCoreBody = async (
+	parentHash: string | undefined,
+	cast: Cast,
+	text: string,
+	embedBlock: string,
+	replyCount: number,
+	ctx: RunContext,
+): Promise<string> => {
+	const header = parentHash
+		? await renderReplyHeader(cast, ctx)
+		: await renderTopLevelHeader(cast, ctx);
+	return [
+		header,
+		"--",
+		text + (embedBlock ? `\n\n${embedBlock}` : ""),
+		renderReplyFooter(replyCount),
+	].join("\n");
+};
+
 export const fidsLoop = async (
 	outDir: string = OUT_DIR,
 	ctx: RunContext = defaultRunContext(),
@@ -149,7 +178,7 @@ export const fidsLoop = async (
 		const userCastHashes = await ctx.data.listCastHashesByFid(user.fid);
 		const content =
 			(await renderUserHeader(fid, ctx)) +
-			`\n---\n${userCastHashes.map((h) => h.replace(/^0x/, "")).join("\n")}`;
+			`\n---\n${userCastHashes.map((h) => strip0x(h)).join("\n")}`;
 		await sink.write(userRelPath, content);
 	}
 };
@@ -240,18 +269,18 @@ export const castsLoop = async (
 		const renderedCast = await renderCast(hydratedCast, ctx);
 
 		// write
-		await sink.write(
-			castRelPath,
-			`
-${renderedCast.parent_hash ? await renderReplyHeader(hydratedCast, ctx) : await renderTopLevelHeader(hydratedCast, ctx)}
---
-${renderedCast.text}${embedBlock ? `\n\n${embedBlock}` : ""}
-${renderReplyFooter(replyCount)}
---
-${renderedCast.channel ? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />` : "{no channel}"}
-
-`.trim(),
+		const channelLine = renderedCast.channel
+			? `${renderedCast.channel} <img src="${renderedCast.channel_image}" height="20" width="20" alt="${renderedCast.channel}" />`
+			: "{no channel}";
+		const body = await renderCastCoreBody(
+			renderedCast.parent_hash,
+			hydratedCast,
+			renderedCast.text,
+			embedBlock,
+			replyCount,
+			ctx,
 		);
+		await sink.write(castRelPath, [body, "--", channelLine].join("\n").trim());
 		pendingRendered.push({
 			username,
 			filename,
