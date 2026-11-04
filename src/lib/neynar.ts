@@ -6,6 +6,7 @@ import type {
 import { fetcher } from "itty-fetcher";
 import { diff, sift, unique } from "radash";
 import invariant from "tiny-invariant";
+import { defaultRunContext, type RunContext } from "../ctx";
 import {
 	filterNonDeletedCastHashes,
 	getCastFromHash,
@@ -107,6 +108,7 @@ const paginateFeedResponse = async (
 	url: string,
 	limit: number,
 	baseParams: Record<string, string | number | boolean>,
+	ctx: RunContext = defaultRunContext(),
 ): Promise<FeedResponse> => {
 	const allCasts: Cast[] = [];
 	let cursor: string | undefined;
@@ -162,7 +164,10 @@ const paginateFeedResponse = async (
 			// Short-circuit for incremental runs: if the oldest cast on this page
 			// is already in the archive, all subsequent pages will be older and known.
 			const lastCastOnPage = res.casts.at(-1);
-			if (lastCastOnPage && (await hasCastInDb(lastCastOnPage.hash))) {
+			if (
+				lastCastOnPage &&
+				(await hasCastInDb(lastCastOnPage.hash, ctx))
+			) {
 				console.log(
 					`Stopping pagination: oldest cast on page (${lastCastOnPage.hash.slice(0, 10)}...) already in queue`,
 				);
@@ -235,7 +240,10 @@ const paginateFeedResponse = async (
 	} as unknown as FeedResponse;
 };
 
-export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
+export const getCronFeed = async (
+	fid: number,
+	ctx: RunContext = defaultRunContext(),
+): Promise<FeedResponse> => {
 	// Check cache first
 	const cached = feedCache.get(fid);
 	if (cached) {
@@ -246,7 +254,7 @@ export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
 	const res = await paginateFeedResponse("/farcaster/feed/user/casts/", 150, {
 		include_replies: false,
 		fid,
-	});
+	}, ctx);
 
 	// Cache the complete paginated result
 	feedCache.set(fid, JSON.stringify(res));
@@ -254,7 +262,10 @@ export const getCronFeed = async (fid: number): Promise<FeedResponse> => {
 	return res;
 };
 
-export const getReplies = async (fid: number): Promise<FeedResponse> => {
+export const getReplies = async (
+	fid: number,
+	ctx: RunContext = defaultRunContext(),
+): Promise<FeedResponse> => {
 	// Check cache first
 	const cached = repliesCache.get(fid);
 	if (cached) {
@@ -269,6 +280,7 @@ export const getReplies = async (fid: number): Promise<FeedResponse> => {
 			filter: "replies",
 			fid,
 		},
+		ctx,
 	);
 
 	// Cache the complete paginated result

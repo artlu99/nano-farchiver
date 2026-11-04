@@ -63,6 +63,46 @@
 		});
 	}
 
+	// Archiver run status: poll /runs/status (the progress object the server
+	// poller writes to R2) and render the live row.
+	const runEls = {
+		state: document.getElementById("run-state"),
+		phase: document.getElementById("run-phase"),
+		started: document.getElementById("run-started"),
+		updated: document.getElementById("run-updated"),
+		unknown: document.getElementById("run-unknown"),
+		hydrated: document.getElementById("run-hydrated"),
+		renders: document.getElementById("run-renders"),
+		scanned: document.getElementById("run-scanned"),
+		failures: document.getElementById("run-failures"),
+		lastline: document.getElementById("run-lastline"),
+	};
+	const hasRunRow = Object.values(runEls).every(Boolean);
+	const fmt = (ms) => (ms ? new Date(ms).toLocaleString() : "—");
+
+	function renderRun(p) {
+		if (!p || typeof p !== "object") return;
+		runEls.state.textContent = p.running === true ? "running" : "idle";
+		runEls.phase.textContent = String(p.phase ?? "—");
+		runEls.started.textContent = fmt(p.startedAt);
+		runEls.updated.textContent = fmt(p.updatedAt);
+		runEls.unknown.textContent = String(p.unknown ?? "—");
+		runEls.hydrated.textContent = String(p.hydrated ?? "—");
+		runEls.renders.textContent = String(p.renders ?? "—");
+		runEls.scanned.textContent = String(p.scanned ?? "—");
+		runEls.failures.textContent = String(p.failures ?? "—");
+		runEls.lastline.textContent = String(p.lastLine ?? "");
+	}
+
+	async function refreshRun() {
+		try {
+			const res = await fetch("/runs/status", { cache: "no-store" });
+			if (res.ok) renderRun(await res.json());
+		} catch {}
+	}
+	refreshRun();
+	setInterval(refreshRun, 3_000);
+
 	// Initial hydration + revalidate (stale-while-revalidate) then dynamic polling loop.
 	const now = Date.now();
 	const age =
