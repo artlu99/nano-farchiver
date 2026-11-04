@@ -120,7 +120,7 @@ app.get("/runs/status", async (c) => {
 	}
 });
 
-/** GET /runs — live view: phase, counters, last line; polls every 2 s. */
+/** GET /runs — live view: status badge, key counters, last line; polls 2 s. */
 app.get("/runs", (c) =>
 	c.html(
 		`<!DOCTYPE html>
@@ -131,37 +131,44 @@ app.get("/runs", (c) =>
 <title>run status — nano-farchiver</title>
 <link rel="stylesheet" href="/static/styles.css">
 <style>
-body{max-width:48rem;margin:2rem auto;font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif}
+body{max-width:36rem;margin:2rem auto;font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif}
 .breadcrumb{margin-bottom:1.5rem;font-size:.9rem;color:var(--muted)}
 .breadcrumb a{color:var(--muted)}
-dl{background:var(--surface);padding:1rem;border-radius:4px}
-dt{font-weight:600}dd{margin:0 0 .25rem 1rem;color:var(--muted)}
-.phase{font-size:1.4rem;font-weight:700;margin:0 0 1rem}
-.lastline{font-family:ui-monospace,monospace;font-size:.9rem;color:var(--muted);white-space:pre-wrap;word-break:break-word;min-height:1.4em}
-.badge{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.8rem;font-weight:600}
+.meta{font-size:.85rem;color:var(--muted)}
+.phase{font-size:1.3rem;font-weight:700;margin:0}
+.stats{display:flex;gap:.75rem;margin:1.25rem 0}
+.stat{flex:1;background:var(--surface);border-radius:6px;padding:.9rem .5rem;text-align:center}
+.stat .v{font-family:ui-monospace,monospace;font-size:1.7rem;font-weight:700;line-height:1.2}
+.stat .l{font-size:.7rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.stat.bad .v{color:#b3174b}
+.lastline{font-family:ui-monospace,monospace;font-size:.85rem;color:var(--muted);background:var(--surface);border-radius:6px;padding:.75rem 1rem;white-space:pre-wrap;word-break:break-word;min-height:1.4em}
+.badge{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.8rem;font-weight:600;vertical-align:.15em}
 .badge.running{background:#e3f6ee;color:#00704f}
-.badge.idle{background:var(--soft);color:var(--muted)}
+.badge.idle{background:var(--code-bg);color:var(--muted)}
 .badge.error{background:#fde8ef;color:#b3174b}
 </style>
 </head>
 <body>
 <h1>Archiver run</h1>
-<p><span id="badge" class="badge idle">idle</span> <span id="phase">—</span></p>
-<dl>
-<dt>started</dt><dd id="started">—</dd>
-<dt>updated</dt><dd id="updated">—</dd>
-<dt>unknown casts</dt><dd id="unknown">—</dd>
-<dt>hydrated</dt><dd id="hydrated">—</dd>
-<dt>sweep offset</dt><dd id="offset">—</dd>
-<dt>renders written</dt><dd id="renders">—</dd>
-<dt>casts scanned</dt><dd id="scanned">—</dd>
-<dt>failures</dt><dd id="failures">—</dd>
-</dl>
+<p><span id="badge" class="badge idle">idle</span> <span id="phase" class="phase">—</span></p>
+<div class="stats">
+<div class="stat"><div class="v" id="hydrated">—</div><div class="l">hydrated</div></div>
+<div class="stat"><div class="v" id="renders">—</div><div class="l">renders</div></div>
+<div class="stat" id="statFailures"><div class="v" id="failures">—</div><div class="l">failures</div></div>
+</div>
+<p class="meta">started <span id="started">—</span> · updated <span id="updated">—</span></p>
 <p class="lastline" id="lastline"></p>
 <p><a href="/">← back</a> · <a href="/timeline">timeline</a></p>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
+const ago = (t) => {
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 5) return "just now";
+  if (s < 60) return s + "s ago";
+  if (s < 3600) return Math.round(s / 60) + "m ago";
+  return new Date(t).toLocaleString();
+};
 function render(p) {
   const STALE_MS = 10 * 60 * 1000; // tick budget is 8 min — older = writer died
   const stale = p.running === true && (!p.updatedAt || Date.now() - p.updatedAt > STALE_MS);
@@ -170,14 +177,15 @@ function render(p) {
   badge.textContent = running ? "running" : stale ? "stale" : (p.phase === "idle" ? "idle" : "finished");
   badge.className = "badge " + (running ? "running" : stale ? "error" : "idle");
   $("phase").textContent = esc(p.phase ?? "—");
-  $("started").textContent = p.startedAt ? new Date(p.startedAt).toLocaleString() : "—";
-  $("updated").textContent = p.updatedAt ? new Date(p.updatedAt).toLocaleString() : "—";
-  $("unknown").textContent = String(p.unknown ?? "—");
+  $("started").textContent = p.startedAt ? ago(p.startedAt) : "—";
+  $("updated").textContent = p.updatedAt ? ago(p.updatedAt) : "—";
+  $("started").title = p.startedAt ? new Date(p.startedAt).toLocaleString() : "";
+  $("updated").title = p.updatedAt ? new Date(p.updatedAt).toLocaleString() : "";
   $("hydrated").textContent = String(p.hydrated ?? "—");
-  $("offset").textContent = String(p.offset ?? "—");
   $("renders").textContent = String(p.renders ?? "—");
-  $("scanned").textContent = String(p.scanned ?? "—");
-  $("failures").textContent = String(p.failures ?? "—");
+  const f = p.failures ?? 0;
+  $("failures").textContent = String(f);
+  $("statFailures").className = "stat" + (f > 0 ? " bad" : "");
   $("lastline").textContent = p.lastLine ?? "";
 }
 async function poll() {
