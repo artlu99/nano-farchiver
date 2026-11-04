@@ -345,7 +345,7 @@ Progress (2026-11-03):
 5. **Cutover.** DNS → `web`; decommission VPS (or keep as cold fallback running
    `archiver` code against the bucket).
 6. **Cleanup.** Delete `serve.ts`/SQLite paths (or `legacy/`); docs; CI gates:
-   `bunx tsc`, `bunx biome check`, `bun test`, `wrangler deploy --dry-run`.
+   `bun check`, `bunx biome check`, `bun test`, `wrangler deploy --dry-run`.
 
 Rollback before stage 5 = DNS still on VPS + re-enable its writer (VPS SQLite was
 never touched after stage 3's import). Rollback after = re-point DNS; bucket is
