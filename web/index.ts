@@ -15,6 +15,7 @@ import type { Env } from "./env";
 import { archiverFid, gatedUsername, getStore } from "./env";
 import { installFacilitatorFetch } from "./facilitator-fetch";
 import { statsFromIndex } from "./page";
+import { spamThresholdFromQuery } from "./spam-threshold";
 import { timelineHtml } from "./timeline";
 import { getGate } from "./x402";
 
@@ -63,6 +64,7 @@ app.get("/timeline", async (c) => {
 			previewLength: TIMELINE_PREVIEW_LENGTH,
 			spamaway,
 			textfilters,
+			spamThreshold: spamThresholdFromQuery(c.req.query("spam")),
 		});
 	} catch (error) {
 		console.error("timeline error:", error);

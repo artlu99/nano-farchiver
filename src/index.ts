@@ -19,8 +19,8 @@ export const doIt = async (fid: number, ctx: RunContext = runtimeContext()) => {
 	await ctx.data.deferCommits();
 	try {
 		resetTimers();
-		const casts = await getCronFeed(fid);
-		const replies = await getReplies(fid);
+		const casts = await getCronFeed(fid, ctx);
+		const replies = await getReplies(fid, ctx);
 		console.log(pluralize(casts.casts.length, "cast"));
 		console.log(casts.next?.cursor ?? "no cursor");
 		console.log(pluralize(replies.casts.length, "reply", "replies"));

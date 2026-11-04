@@ -117,8 +117,8 @@ export const runTick = async (
 	let renders = 0;
 	let scanned = 0;
 	try {
-		const casts = await getCronFeed(fid);
-		const replies = await getReplies(fid);
+		const casts = await getCronFeed(fid, ctx);
+		const replies = await getReplies(fid, ctx);
 		all = [...casts.casts, ...replies.casts];
 		progress("feeds", `feeds: ${all.length} casts in feed`);
 

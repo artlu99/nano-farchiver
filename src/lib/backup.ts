@@ -303,7 +303,7 @@ export const selfHealFromBackups = async (
 		unfetched.map((entry) => entry.hash),
 		25,
 	)) {
-		await getCasts(chunk ?? []);
+		await getCasts(chunk ?? [], ctx);
 	}
 
 	// Purged casts: rebuild from the backup proto and render once.

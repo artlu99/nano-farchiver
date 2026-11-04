@@ -50,9 +50,12 @@ ul.entries li{padding:.25rem 0}
 .cast-meta{font-size:.85rem;color:var(--muted);margin-bottom:.25rem}
 .cast-snippet{color:var(--fg);font-size:.95rem}
 h2.day{margin:2rem 0 .75rem;padding-top:1rem;border-top:1px solid var(--border);font-size:1.15rem}
-.timeline-controls{display:flex;align-items:center;gap:.75rem;margin:.75rem 0 1.25rem}
+.timeline-controls{display:flex;align-items:center;gap:.75rem;margin:.75rem 0 1.25rem;flex-wrap:wrap}
 .timeline-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:.9rem;color:var(--fg);user-select:none}
 .timeline-toggle input{width:1rem;height:1rem}
+.timeline-slider{display:inline-flex;align-items:center;gap:.5rem;font-size:.9rem;color:var(--fg)}
+.timeline-slider input[type="range"]{width:9rem}
+.timeline-slider .value{min-width:2.2rem;text-align:right;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>

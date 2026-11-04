@@ -87,7 +87,7 @@ export const hydrateMissingCasts = async (
 	if (hashes.length === 0) return 0;
 
 	ctx.missingCastHashes.clear();
-	await Promise.all(cluster(hashes, 25).map((chunk) => getCasts(chunk)));
+	await Promise.all(cluster(hashes, 25).map((chunk) => getCasts(chunk, ctx)));
 	for (const hash of hashes) {
 		if (!(await hasCastInDb(hash, ctx))) {
 			ctx.missingCastHashes.add(hash);
@@ -129,7 +129,7 @@ export const hydrateReferencedParents = async (
 
 		total += missingParents.length;
 		await Promise.all(
-			cluster(missingParents, 25).map((chunk) => getCasts(chunk)),
+			cluster(missingParents, 25).map((chunk) => getCasts(chunk, ctx)),
 		);
 	}
 	return total;
@@ -148,7 +148,9 @@ export const hydrateQuotedCastEmbeds = async (
 		const missing = await missingQuotedHashes(ctx);
 		if (missing.length === 0) break;
 		total += missing.length;
-		await Promise.all(cluster(missing, 25).map((chunk) => getCasts(chunk)));
+		await Promise.all(
+			cluster(missing, 25).map((chunk) => getCasts(chunk, ctx)),
+		);
 	}
 	return total;
 };
@@ -177,7 +179,7 @@ export const processQueuedCast = async (
 	phases.push(tagReplies(c.hash, ctx));
 
 	if (c.parent_author?.fid && c.parent_hash) {
-		phases.push(hydrateFullThread(c.parent_author.fid, c.parent_hash));
+		phases.push(hydrateFullThread(c.parent_author.fid, c.parent_hash, ctx));
 	} else {
 		console.error("No parent author or hash found for cast", c.hash);
 	}
@@ -221,11 +223,18 @@ const tagReplies = async (hash: string, ctx: RunContext) => {
 	);
 };
 
-const hydrateFullThread = async (fid: number, hash: string) => {
+const hydrateFullThread = async (
+	fid: number,
+	hash: string,
+	ctx: RunContext = defaultRunContext(),
+) => {
 	const fullThread = await traverse(fid, hash);
 	await Promise.all(
 		cluster(fullThread, 25).map((chunk) =>
-			getCasts(chunk.map((item) => item.hash)),
+			getCasts(
+				chunk.map((item) => item.hash),
+				ctx,
+			),
 		),
 	);
 };

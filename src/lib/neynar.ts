@@ -164,10 +164,7 @@ const paginateFeedResponse = async (
 			// Short-circuit for incremental runs: if the oldest cast on this page
 			// is already in the archive, all subsequent pages will be older and known.
 			const lastCastOnPage = res.casts.at(-1);
-			if (
-				lastCastOnPage &&
-				(await hasCastInDb(lastCastOnPage.hash, ctx))
-			) {
+			if (lastCastOnPage && (await hasCastInDb(lastCastOnPage.hash, ctx))) {
 				console.log(
 					`Stopping pagination: oldest cast on page (${lastCastOnPage.hash.slice(0, 10)}...) already in queue`,
 				);
@@ -251,10 +248,15 @@ export const getCronFeed = async (
 	}
 
 	// Fetch all pages
-	const res = await paginateFeedResponse("/farcaster/feed/user/casts/", 150, {
-		include_replies: false,
-		fid,
-	}, ctx);
+	const res = await paginateFeedResponse(
+		"/farcaster/feed/user/casts/",
+		150,
+		{
+			include_replies: false,
+			fid,
+		},
+		ctx,
+	);
 
 	// Cache the complete paginated result
 	feedCache.set(fid, JSON.stringify(res));
@@ -432,19 +434,31 @@ export const getConversation = async (hash: string): Promise<Conversation> => {
 	return res;
 };
 
-export const getCasts = async (hashes: string[]): Promise<Cast[]> => {
+/**
+ * Fetch casts by hash. `ctx` decides where the results land — cache checks,
+ * tombstones, and (critically) the fetched rows themselves all go through
+ * `ctx.data`. Never rely on the implicit default here: the prod run context is
+ * the bucket, and tagging into the SQLite default instead leaves the bucket
+ * index permanently missing rows (the "[parent unavailable]" timeline bug).
+ */
+export const getCasts = async (
+	hashes: string[],
+	ctx: RunContext = defaultRunContext(),
+): Promise<Cast[]> => {
 	invariant(hashes.length > 0, "hashes is empty");
 	invariant(hashes.length <= 25, "hashes can't be more than 25 at a time");
 
 	// check cache for each hash
 	const cachedCasts = sift(
-		await Promise.all(hashes.map((hash) => getCastFromHash(hash, undefined))),
+		await Promise.all(
+			hashes.map((hash) => getCastFromHash(hash, undefined, ctx)),
+		),
 	);
 	const seenHashes = unique(cachedCasts.map((cast) => cast.hash));
 	const unseenHashes = diff(hashes, seenHashes);
 
 	if (unseenHashes.length > 0) {
-		const fetchHashes = await filterNonDeletedCastHashes(unseenHashes);
+		const fetchHashes = await filterNonDeletedCastHashes(unseenHashes, ctx);
 		if (fetchHashes.length === 0) return cachedCasts;
 		try {
 			const res = await timeAsync("casts", () =>
@@ -481,10 +495,10 @@ export const getCasts = async (hashes: string[]): Promise<Cast[]> => {
 			// the cast no longer exists — record it as deleted.
 			const absent = absentHashes(fetchHashes, fetchedCasts);
 			if (absent.length > 0) {
-				await markCastsDeleted(absent, "not found upstream");
+				await markCastsDeleted(absent, "not found upstream", Date.now(), ctx);
 			}
 			// update cache for unseen hashes
-			await tagCasts(fetchedCasts);
+			await tagCasts(fetchedCasts, ctx);
 			return [...cachedCasts, ...fetchedCasts];
 		} catch (error: unknown) {
 			console.error(

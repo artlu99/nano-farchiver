@@ -1,12 +1,17 @@
 import { escapeHtml, hash2filename } from "../src/lib/helpers";
 import type { ArchiveIndex } from "../src/store/indexModel";
 import { breadcrumb, renderPage } from "./page";
+import { getSpamScores, type ScoreFetcher } from "./spam-scores";
 
 export interface TimelineOptions {
 	limit: number;
 	previewLength: number;
 	spamaway: boolean;
 	textfilters: string[];
+	/** Hide casts scoring ≥ this % spam (Quilcast). 0 = off. */
+	spamThreshold?: number;
+	/** DI: score fetcher for tests (defaults to global fetch). */
+	scoreFetcher?: ScoreFetcher;
 }
 
 const escapeRegExp = (s: string): string =>
@@ -28,11 +33,17 @@ const snippet = (preview: string, maxLen: number): string => {
  * in cast entries — no per-row object GETs). Same UTC-day grouping and
  * reply-hint shape as the Bun stack's /timeline.
  */
-export const timelineHtml = (
+export const timelineHtml = async (
 	index: ArchiveIndex,
 	options: TimelineOptions,
-): Response => {
-	const { limit, previewLength, spamaway } = options;
+): Promise<Response> => {
+	const {
+		limit,
+		previewLength,
+		spamaway,
+		spamThreshold = 0,
+		scoreFetcher,
+	} = options;
 	const rx = spamaway ? spamRegex(options.textfilters) : null;
 
 	const rows = Object.entries(index.casts)
@@ -50,13 +61,35 @@ export const timelineHtml = (
 		})
 		.sort((a, b) => b.ts - a.ts);
 
-	const visible = rows.slice(0, limit);
+	// Score filtering (Quilcast) applies to the prefetch window only — one
+	// batched lookup, ≤ 100 hashes; null/unscored casts stay visible.
+	let window = rows.slice(0, limit * 2);
+	if (spamThreshold > 0 && window.length > 0) {
+		const hiddenHashes = new Set<string>();
+		const scores = await getSpamScores(
+			window.map((row) => row.hash),
+			scoreFetcher,
+		);
+		for (const row of window) {
+			const score = scores.get(row.hash);
+			if (
+				score !== null &&
+				score !== undefined &&
+				score * 100 >= spamThreshold
+			) {
+				hiddenHashes.add(row.hash);
+			}
+		}
+		window = window.filter((row) => !hiddenHashes.has(row.hash));
+	}
+
+	const visible = window.slice(0, limit);
 	const usernameOf = (fid: number): string =>
 		index.users[String(fid)]?.username ?? `fid:${fid}`;
 
 	let body = `<div class="breadcrumb"><a href="/browse">out</a> / <span>timeline</span></div>`;
 	body += `<h1>Timeline</h1>`;
-	body += `<div class="timeline-controls"><label class="timeline-toggle"><input type="checkbox" id="spamaway-toggle"> <span>spamaway</span></label></div>`;
+	body += `<div class="timeline-controls"><label class="timeline-toggle"><input type="checkbox" id="spamaway-toggle"> <span>spamaway</span></label><label class="timeline-slider">spam &ge; <input type="range" id="spam-threshold" min="0" max="100" step="5" value="${spamThreshold}"> <span id="spam-threshold-value">${spamThreshold}</span>%</label></div>`;
 	body += `<p>Showing ${visible.length} latest casts</p>`;
 
 	const days = new Map<string, typeof visible>();
@@ -72,53 +105,63 @@ export const timelineHtml = (
 	// the URL param and reloads (server re-renders with the filter applied).
 	// localStorage persists the choice across visits, mirroring the old
 	// Bun stack's behavior.
-	const spamawayScript = `
+	const controlsScript = `
 (() => {
-  const KEY = "nano-farchiver:timeline:spamaway";
-  const el = document.getElementById("spamaway-toggle");
-  if (!el) return;
-
-  const input = el;
+  const SPAMAWAY_KEY = "nano-farchiver:timeline:spamaway";
+  const THRESHOLD_KEY = "nano-farchiver:timeline:spam-threshold";
+  const box = document.getElementById("spamaway-toggle");
+  const slider = document.getElementById("spam-threshold");
+  const value = document.getElementById("spam-threshold-value");
   const url = new URL(location.href);
-  const param = url.searchParams.get("spamaway");
-  const hasParam = param !== null;
+  const hasSpamParam = url.searchParams.has("spamaway");
+  const hasThresholdParam = url.searchParams.has("spam");
 
-  function parseSpamawayParam(raw) {
-    if (raw == null) return null;
-    const v = String(raw).trim();
-    if (v === "0") return false;
-    if (v === "1") return true;
-    return null;
-  }
-
-  // Omitted param defaults to enabled on the server; URL may omit ?spamaway=.
-  let enabled = true;
+  let spamEnabled = true;
+  let threshold = 0;
   try {
-    const stored = localStorage.getItem(KEY);
-    if (stored === "0") enabled = false;
-    if (stored === "1") enabled = true;
+    const s = localStorage.getItem(SPAMAWAY_KEY);
+    if (s === "0") spamEnabled = false;
+    if (s === "1") spamEnabled = true;
+    const t = Number(localStorage.getItem(THRESHOLD_KEY));
+    if (Number.isFinite(t) && t >= 0) threshold = Math.min(100, Math.round(t));
   } catch {}
 
-  input.checked = enabled;
+  if (box) box.checked = spamEnabled;
+  if (slider) slider.value = String(threshold);
+  if (value) value.textContent = String(threshold);
 
-  // Stored "off" but no param: server would treat as on — align URL with storage.
-  if (!hasParam && enabled === false) {
-    url.searchParams.set("spamaway", "0");
+  // Align URL with stored prefs (one navigation at most).
+  const needs = [];
+  if (!hasSpamParam && !spamEnabled) needs.push(["spamaway", "0"]);
+  if (!hasThresholdParam && threshold > 0) needs.push(["spam", String(threshold)]);
+  if (needs.length > 0) {
+    for (const [k, v] of needs) url.searchParams.set(k, v);
     location.replace(url.toString());
     return;
   }
 
+  const apply = (params) => {
+    for (const [k, v] of params) url.searchParams.set(k, v);
+    location.replace(url.toString());
+  };
   const DEBOUNCE_MS = 150;
-  let refreshTimer = 0;
-  input.addEventListener("change", () => {
-    const nextUrl = new URL(location.href);
-    nextUrl.searchParams.set("spamaway", input.checked ? "1" : "0");
-    if (refreshTimer) clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => {
-      // Reload from backend (server-rendered timeline HTML).
-      location.href = nextUrl.toString();
-    }, DEBOUNCE_MS);
+  let timer = 0;
+  const debouncedApply = (params) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => apply(params), DEBOUNCE_MS);
+  };
+
+  if (box) box.addEventListener("change", () => {
+    debouncedApply([["spamaway", box.checked ? "1" : "0"]]);
   });
+  if (slider) {
+    slider.addEventListener("input", () => {
+      if (value) value.textContent = slider.value;
+    });
+    slider.addEventListener("change", () => {
+      debouncedApply([["spam", slider.value]]);
+    });
+  }
 })();
 `;
 
@@ -154,7 +197,7 @@ export const timelineHtml = (
 		}
 	}
 
-	body += `<script>${spamawayScript}</script>`;
+	body += `<script>${controlsScript}</script>`;
 
 	return renderPage({ title: "Timeline", bodyHtml: body });
 };
