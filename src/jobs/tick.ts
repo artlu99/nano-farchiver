@@ -1,6 +1,5 @@
 import type { Cast } from "@neynar/nodejs-sdk/build/api";
 import type { RunContext } from "../ctx";
-import { selfHealFromBackups } from "../lib/backup";
 import { getCronFeed, getReplies } from "../lib/neynar";
 import {
 	drainMissingCasts,
@@ -122,7 +121,6 @@ export const runTick = async (
 		await ctx.data.setSetting(CURSOR_KEY(fid), String(offset));
 
 		await drainMissingCasts(2, ctx);
-		await selfHealFromBackups("out", ctx);
 		const renderResult = await writeLoop("out", ctx, renderDeadline);
 		renders = renderResult.written;
 		scanned = renderResult.scanned;

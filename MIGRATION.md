@@ -292,13 +292,23 @@ Progress (2026-11-03):
       wrangler.jsonc + public/ asset build, 10 route tests against an
       injected MemoryStore (117 total). Deploy: `bun run web:deploy`.
 - [x] **`web` worker DEPLOYED (stage 4 partially live).**
-      https://farchiver-web.artlu.workers.dev — browse/timeline/api served
-      from the bucket; x402 gate ACTIVE (facilitator via service binding —
-      workers.dev→workers.dev fetch is blocked, error 1042; routed through
-      the FACILITATOR binding instead). Live checks: timeline 200, stats
-      200, gated preview + pay-link 200, bogus payment → 402 (verify
-      round-trip works), ungated 200. Index tuple migration ran (2,631
-      legacy 5-tuples → 6-tuples). Postponed: a real wallet payment.
+      https://farchiver-web.artlu.workers.dev AND the custom domain
+      `decent-artlu.farchiver.xyz` (VPS web process + tunnel retired) —
+      browse/timeline/api served from the bucket; x402 gate ACTIVE
+      (facilitator via service binding — workers.dev→workers.dev fetch is
+      blocked, error 1042; routed through the FACILITATOR binding instead).
+      Live checks: timeline 200, stats 200, gated preview + pay-link 200,
+      bogus payment → 402 (verify round-trip works), ungated 200. Index
+      tuple migration ran (2,631 legacy 5-tuples → 6-tuples). Run button
+      removed; POST /doIt returns 501 by design. Postponed: a real wallet
+      payment.
+- [x] **Execution stays on the server cron (Workers Free limitation).** The
+      archiver worker (`farchiver-archiver.artlu.workers.dev`) is deployed —
+      POST /runs, GET /runs/status, cron trigger — but on Workers Free the
+      cron registration fails (account cron-limit) and a POST-executed tick
+      dies on the 10 ms CPU limit (error 1101; objects persist, next VPS run
+      re-tags — no corruption). Moving execution to Workers requires
+      Workers Paid; until then the hourly VPS cron is the executor.
 - [x] **Cadence + writer flip (stage 3 COMPLETE, no downtime).** VPS web
       process + tunnel killed; readers cutover to the web worker via the
       custom domain (verified live). Archiver: hourly cron on the server

@@ -1,6 +1,8 @@
-import { createStoreRunContext, type RunContext } from "../src/ctx";
+import { StoreArchiveData } from "../src/data/store";
+import type { RunContext } from "../src/ctx";
 import { runTick, type TickResult } from "../src/jobs/tick";
 import { S3Store } from "../src/store/s3";
+import { StoreRenderSink } from "../src/sink";
 
 /**
  * Archiver worker: runs the archive pipeline on Cloudflare.
@@ -47,7 +49,12 @@ const getStore = (env: Env): S3Store => {
 };
 
 const getCtx = (env: Env): RunContext => {
-	ctx ??= createStoreRunContext(getStore(env));
+	ctx ??= {
+		data: new StoreArchiveData(getStore(env)),
+		missingCastHashes: new Set(),
+		userCache: new Map(),
+		out: () => new StoreRenderSink(getStore(env)),
+	};
 	return ctx;
 };
 

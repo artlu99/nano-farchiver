@@ -10,8 +10,6 @@ export interface Env {
 	ASSETS: { fetch(request: Request): Promise<Response> };
 	/** Service binding: facilitator worker (workers.dev fetch is blocked). */
 	FACILITATOR: { fetch(request: Request): Promise<Response> };
-	/** Service binding: archiver worker (POST /runs, GET /runs/status). */
-	ARCHIVER: { fetch(request: Request): Promise<Response> };
 	S3_ENDPOINT: string;
 	S3_BUCKET: string;
 	S3_REGION?: string;

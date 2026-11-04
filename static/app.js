@@ -47,22 +47,6 @@
 		}, ms);
 	}
 
-	// Run button: POST /doIt (the web worker forwards to the archiver worker's
-	// /runs via a service binding and returns 202 immediately), then reload so
-	// /status reflects the run as it progresses.
-	const btn = document.getElementById("run-all");
-	if (btn) {
-		btn.addEventListener("click", async () => {
-			if (btn.disabled) return;
-			btn.disabled = true;
-			btn.textContent = "Queued…";
-			try {
-				await fetch("/doIt", { method: "POST" });
-			} catch {}
-			setTimeout(() => location.reload(), 1500);
-		});
-	}
-
 	// Initial hydration + revalidate (stale-while-revalidate) then dynamic polling loop.
 	const now = Date.now();
 	const age =

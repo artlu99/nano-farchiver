@@ -11,6 +11,12 @@
 	"compatibility_date": "2026-01-15",
 	"compatibility_flags": ["nodejs_compat"],
 	"triggers": { "crons": ["17 * * * *"] },
+	"alias": {
+		// bun:sqlite exists only in the Bun runtime; the Worker never executes
+		// it (all worker paths pass an explicit RunContext) — this stub keeps
+		// the bundle resolvable despite the transitive ctx->db.ts import.
+		"bun:sqlite": "./bun-sqlite-stub.ts"
+	},
 	"vars": {
 		"ARCHIVER_FID": "3319217",
 		"S3_REGION": "auto",

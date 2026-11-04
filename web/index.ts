@@ -92,20 +92,14 @@ app.get("/api/policy", async (c) => {
 	}
 });
 
-/** POST /doIt — proxy to the archiver worker via the ARCHIVER binding (R1).
- *  202 immediately; the tick runs in the background via waitUntil. */
-app.post("/doIt", async (c) => {
-	try {
-		const upstream = c.env.ARCHIVER.fetch(
-			new Request("https://archiver/runs", { method: "POST" }),
-		);
-		c.executionCtx.waitUntil(upstream);
-		return c.json({ queued: true }, 202);
-	} catch (error) {
-		console.error("doIt proxy error:", error);
-		return c.text("archiver worker unreachable", 502);
-	}
-});
+/** POST /doIt — the archiver runs on the server's cron, not on Workers
+ *  (free-plan CPU cannot execute ticks). Kept as an explicit 501. */
+app.post("/doIt", (c) =>
+	c.text(
+		"runs execute on the server cron (ARCHIVE_BACKEND=store); worker execution requires Workers Paid",
+		501,
+	),
+);
 
 /** GET /browse and /browse/ — user-directory listing with the glance. */
 const browseRoot = (c: { env: Env }) =>
