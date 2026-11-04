@@ -6,122 +6,139 @@
 
 `nano farchiver` is a weekend project that leverages free + paid SAAS. It may be censorable, but it costs very little.
 
+## Shape of the system
+
+One S3-compatible bucket (`nano-farchiver`) is the contract between three pieces:
+
+- **Archiver pipeline** (`src/`, Bun) — fetch → tag → heal → render. Rendered files land
+  as bucket objects and all index mutations coalesce into ONE `meta/index.json` PUT per
+  run: a crashed run loses only the buffer; objects persist and the next run re-tags
+  (self-healing by re-crawl). Production runs on a server: an hourly cron sets the
+  `meta/run-request` marker (`scripts/cron-set-run-request.sh`), and an every-minute
+  poller consumes it (`scripts/poll-run-request.ts`) under `flock -n logs/doit.lock`.
+  **Single-writer rule:** never run two `doIt`/purge writers concurrently — a second
+  writer can corrupt `meta/index.json`.
+- **Web worker** (`web/`, read-only, live at
+  [farchiver-web.artlu.workers.dev](https://farchiver-web.artlu.workers.dev)) —
+  `/browse`, `/timeline`, `/api/*` served straight from the bucket; x402 paywall on the
+  one gated username; `POST /doIt` asks the archiver worker (service binding) to set the
+  run-request marker.
+- **Archiver worker** (`archiver/`) — the pipeline sliced into a bounded tick behind a
+  bucket lock: `POST /runs`, the marker endpoint `POST /runs/request`, live progress at
+  `GET /runs/status`. No Workers cron trigger — execution stays on the server
+  cron/poller.
+
+`backups/` is git-tracked — this repo is the archive's offsite copy. `MIGRATION.md` has
+the full architecture; `PLAN.md` has the purge design + hard invariants.
+
 ## Setup
 
 1. **Install dependencies:**
    ```bash
    bun install
    ```
+2. **Bucket credentials** in `.env` (Bun auto-loads it):
+   `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,
+   `S3_REGION` (default `auto`).
+3. **FID to archive:** set `ARCHIVER_FID` (default `3319217`) — env, shared by the
+   archiver and the web worker. No source editing.
 
-3. **Configure the FID to archive:**
-   Edit `src/index.ts` and set the `FID` constant to the Farcaster ID you want to archive.
+## Scripts
 
-## Running
+Everything runs through `package.json` scripts:
 
-### CLI
+| Script | What it does |
+|---|---|
+| `bun run doIt` | One archiver run: fetch → tag → heal → render → bucket (needs `S3_*`) |
+| `bun run backup:all` | Raw backup + gate of all live casts (no deletes) |
+| `bun run backup:verify [--sample N]` | Re-run the cryptographic gate on manifest backups; exit 1 on failures |
+| `bun run backup:checkpoint` | Offsite sync (git push / rsync) + `CHECKPOINT.json` |
+| `bun run purge:run` | Purge loop — **dry-run is the default**: lists candidates + gate results, deletes nothing |
+| `bun run purge:run --live [N]` | Live deletes, up to N (or `PURGE_MAX_BATCH`); auto-checkpoints first; needs `FARCASTER_SIGNER_PRIVATE_KEY` |
+| `bun run import:s3` | Backfill the bucket from the legacy local SQLite archive (`db/queue.db3`, read-only) |
+| `bun run import:s3 --dry-run` | Full import pipeline against MemoryStore — no network |
+| `bun run import:s3 --only=casts,index` | Subset import (`casts`, `users`, `deleted`, `settings`, …) |
+| `bun run verify:s3` | Verification-only pass against the bucket |
+| `bun run sync:offsite` | Mirror the bucket to a second bucket (postponed; needs `TARGET_S3_*` env) |
+| `bun run web:build` | Assemble gitignored `public/` from `static/` — run before web dev/deploy |
+| `bun run web:dev` | `wrangler dev` for the web worker |
+| `bun run web:deploy` | Deploy the web worker |
+| `bun run archiver:deploy` | Deploy the archiver worker (`bun:sqlite` aliased to a build stub) |
+| `bun run test` | Hermetic test suite (15 files). Plain `bun test` (no args) ALSO runs a live-API integration test — prefer the script |
 
-Run the archiver:
-```bash
-bun doIt
+Production wiring (server crontab):
+
+```cron
+17 * * * *  cd <repo> && ./scripts/cron-set-run-request.sh     # hourly marker
+* * * * *   cd <repo> && flock -n logs/doit.lock bun scripts/poll-run-request.ts
 ```
 
-Bundle the outputs into a gzipped tarball:
-```bash
-bun bundle
-```
+Wrap manual `bun run doIt` / purge runs in the same `flock` while the poller is active.
+Dated logs land in `logs/`.
 
-### Incremental updates
-
-After an initial run, subsequent runs automatically detect and fetch only new casts by checking against the local queue (`db/queue.db3`). To prepare for an incremental run:
+## Gates
 
 ```bash
-bun clear  # Clear the network cache so fresh data is fetched
-bun doIt   # Fetches only new casts, skips already-written output files
+bun check                          # typecheck (Bun's native checker)
+bunx biome check src web scripts   # lint + format — scope it: a repo-wide check
+                                   # fails on verbatim backups/*.json payloads
+bun run test                       # hermetic tests
 ```
 
-To archive the output and start fresh for the same FID:
-```bash
-bun bundle    # Create out.tar.gz
-bun clear     # Clear the network cache
-bun doIt      # Incremental run
-```
-
-To switch to a different FID:
-```bash
-bun clean  # Removes all databases and output — clean slate
-bun doIt   # Full fetch for the new FID
-```
-
-### Purge loop (delete unliked casts, keep verified backups)
-
-See `PLAN.md` for the full design. Commands:
-
-```bash
-bun run backup:all           # raw backup + verify of all live casts (no deletes)
-bun run backup:verify        # re-verify backups from disk (bit-rot drill)
-bun run backup:checkpoint    # offsite sync (git push / rsync) + CHECKPOINT.json
-bun run purge:run            # dry-run default: lists candidates + gate results, deletes nothing
-bun run purge:run --live 10  # live: auto-checkpoints first, deletes up to N candidates
-```
-
-Safety: a candidate must be live, not liked by you (likes are the keep
-mechanism), not younger than the public age policy (`GET /api/policy`), and
-backed up on disk with a passing cryptographic gate before any delete.
-Tombstones are written before submit; `bun clean` is guarded and the next
-`bun doIt` self-heals purged casts from `backups/`.
-
-### Web server
-
-```bash
-bun start   # builds `react/tailwind.css`, then serves (default port 3000)
-bun dev     # same, with `--hot` reload on `serve.ts`
-```
-
-`react/tailwind.css` is generated (gitignored). `postinstall`, `start`, and `dev` run `tailwind:build` automatically; use `bun run tailwind:watch` in another terminal while editing styles.
-
-Starts a web server (configurable via `PORT`) with the following endpoints:
+## Web worker endpoints
 
 | Endpoint | Description |
 |---|---|
-| `GET /health` | Health check — `{ "status": "ok" }` |
-| `GET /uptime` | Seconds since server started |
-| `GET /status` | Aggregate outstanding/completed cast counts |
-| `GET /status?fid=<number>` | Per-user outstanding/completed counts |
-| `POST /doIt` | Trigger the archiver job (202 if started, 429 if already running) |
-| `POST /clear` | Clear the network cache so the next `/doIt` fetches fresh data |
-| `GET /browse/**` | Browse the `out/` directory — lists folders, renders `.md` files as HTML |
+| `GET /health` | `{ "status": "ok" }` |
+| `GET /uptime` | Seconds since isolate start |
+| `GET /timeline` | Index-derived timeline; `?spamaway=0` disables the textfilter, `?spam=N` sets the Quilcast threshold (0–100%) |
+| `GET /runs` | Live archiver run view (polls `/runs/status` every 2 s) |
+| `GET /runs/status` | Run progress object written by the archiver |
+| `GET /status[?fid=]` | Outstanding/completed counts (ETag'd) |
+| `GET /api/cast/:hash` | Rendered markdown + filename for a cast |
+| `GET /api/archive/stats` | Archive stats incl. casts/month histogram |
 | `GET /api/policy` | Public purge policy — `{ "min_age_days", "source" }` |
-| `GET /api/archive/stats` | Public archive stats (counts + casts/month histogram data) |
-| `GET /review*` | Purge review UI/API — token-gated (404 unless `REVIEW_TOKEN` set) |
-| `GET /llms.txt` | Machine-readable endpoint descriptions |
+| `GET /api/hash/:hash/filename` | Resolve a cast hash to its rendered file |
+| `POST /doIt` | 202; sets the run-request marker via the archiver binding (502 if unreachable) |
+| `GET /browse/**` | The rendered archive; `/browse/<gated-user>/*` is x402-paywalled ($0.01 on Base, `?pay=1`) |
+| `GET /llms.txt` | Machine-readable endpoint descriptions (static asset) |
 
-Related env vars for the server: `X402_FACILITATOR_URL`, `X402_API_KEY`, `X402_ALLOWLIST`, `PUBLIC_APP_URL` (see `server.ts`).
+Secrets via `wrangler secret put` (`S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,
+`X402_API_KEY`); non-secret vars live in `web/wrangler.jsonc`. Deploy with
+`bun run web:deploy`.
+
+## Purge loop
+
+See `PLAN.md` for the design and hard invariants. Safety before any delete: the
+candidate must be live, not liked by you (likes are the keep mechanism — the like-set
+refresh is always full, never incremental: an unlike is the delete signal), not younger
+than the public age policy (fid-scoped settings row > global row > `PURGE_MIN_AGE_DAYS`
+env > 7 days), and backed up on disk with a passing cryptographic gate. Tombstones are
+written before submit; interrupted runs resolve via resume rules on the next run, and
+`doIt` self-heals purged casts from `backups/`.
+
+Knobs: `PURGE_MIN_AGE_DAYS`, `PURGE_MAX_BATCH` (50), `PURGE_DELAY_MS` (1000),
+`PURGE_RECAST_KEEPS=1` (recasts as keep-signal, default off),
+`PURGE_REQUIRE_CHECKPOINT=0` (disables the checkpoint gate).
 
 ## Troubleshooting
 
 **Rate limit errors:**
 - If you see rate limit errors, your upstream may be throttling requests
-- For production use: consider using a higher-throughput upstream or adding rate limiting
+- Fetches retry with capped exponential backoff; 400s fail fast (client errors never succeed on retry)
 
-**Cache / state issues:**
-- `bun clear` — removes the network cache (`db/cache.db3`) so the next run fetches fresh data from the API
-- `bun clean` — removes all databases and output for a completely fresh start
+**State issues:**
+- There is no cache to clear: `casts/*`, `out/*`, and `meta/index.json` are
+  content-addressed/idempotent, and a fresh run re-tags + re-renders (skip-if-rendered
+  makes that cheap). There are no delete paths for archived objects.
+- Stuck "running" badge on `/runs`: the archiver lock takes over after 30 minutes
+  (crashed-run recovery).
 
 ## Development
 
-Archiver (fetch casts to `out/`):
-
-```bash
-bun doIt
-```
-
-React UI + API (`/react/`, `/api/cast/:hash`):
-
-```bash
-bun dev
-```
-
-This project was created using `bun init` in bun v1.3.3. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+- Verify with the three gates above.
+- The suite is fully hermetic (`MemoryStore` bucket / in-memory SQLite); the only
+  live-API file is `src/lib/neynar.integration.test.ts`, excluded from `bun run test`.
 
 ### WONTFIX
 
