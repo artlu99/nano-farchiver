@@ -56,6 +56,7 @@ export const timelineHtml = (
 
 	let body = `<div class="breadcrumb"><a href="/browse">out</a> / <span>timeline</span></div>`;
 	body += `<h1>Timeline</h1>`;
+	body += `<div class="timeline-controls"><label class="timeline-toggle"><input type="checkbox" id="spamaway-toggle"> <span>spamaway</span></label></div>`;
 	body += `<p>Showing ${visible.length} latest casts</p>`;
 
 	const days = new Map<string, typeof visible>();
@@ -66,6 +67,60 @@ export const timelineHtml = (
 		days.set(day, arr);
 	}
 	const sortedDays = [...days.keys()].sort().reverse();
+
+	// spamaway toggle: checkbox reflects effective state; changing it rewrites
+	// the URL param and reloads (server re-renders with the filter applied).
+	// localStorage persists the choice across visits, mirroring the old
+	// Bun stack's behavior.
+	const spamawayScript = `
+(() => {
+  const KEY = "nano-farchiver:timeline:spamaway";
+  const el = document.getElementById("spamaway-toggle");
+  if (!el) return;
+
+  const input = el;
+  const url = new URL(location.href);
+  const param = url.searchParams.get("spamaway");
+  const hasParam = param !== null;
+
+  function parseSpamawayParam(raw) {
+    if (raw == null) return null;
+    const v = String(raw).trim();
+    if (v === "0") return false;
+    if (v === "1") return true;
+    return null;
+  }
+
+  // Omitted param defaults to enabled on the server; URL may omit ?spamaway=.
+  let enabled = true;
+  try {
+    const stored = localStorage.getItem(KEY);
+    if (stored === "0") enabled = false;
+    if (stored === "1") enabled = true;
+  } catch {}
+
+  input.checked = enabled;
+
+  // Stored "off" but no param: server would treat as on — align URL with storage.
+  if (!hasParam && enabled === false) {
+    url.searchParams.set("spamaway", "0");
+    location.replace(url.toString());
+    return;
+  }
+
+  const DEBOUNCE_MS = 150;
+  let refreshTimer = 0;
+  input.addEventListener("change", () => {
+    const nextUrl = new URL(location.href);
+    nextUrl.searchParams.set("spamaway", input.checked ? "1" : "0");
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      // Reload from backend (server-rendered timeline HTML).
+      location.href = nextUrl.toString();
+    }, DEBOUNCE_MS);
+  });
+})();
+`;
 
 	for (const day of sortedDays) {
 		const dayRows = days.get(day) ?? [];
@@ -98,6 +153,8 @@ export const timelineHtml = (
 			body += `</article>`;
 		}
 	}
+
+	body += `<script>${spamawayScript}</script>`;
 
 	return renderPage({ title: "Timeline", bodyHtml: body });
 };

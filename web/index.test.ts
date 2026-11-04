@@ -112,6 +112,9 @@ describe("web routes (bucket-backed)", () => {
 		expect(html).toContain("a reply to the first cast");
 		expect(html).toContain("hello world from the archive");
 		expect(html).not.toContain("this one is tombstoned");
+		// spamaway toggle UI + client persistence script restored
+		expect(html).toContain('id="spamaway-toggle"');
+		expect(html).toContain("nano-farchiver:timeline:spamaway");
 		// forkcaster permalink restored (external hash link per cast)
 		expect(html).toContain(
 			"https://forkcaster.xyz/artlu/0xbbb2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
