@@ -69,12 +69,33 @@ Everything runs through `package.json` scripts:
 Production wiring (server crontab):
 
 ```cron
-17 * * * *  cd <repo> && ./scripts/cron-set-run-request.sh     # hourly marker
-* * * * *   cd <repo> && flock -n logs/doit.lock bun scripts/poll-run-request.ts
+# prune runtime logs older than 14 days
+5 3 * * *    find <repo>/logs -name "*.log" -mtime +14 -delete
+# hourly marker set (script self-cds; absolute paths so the line needs no cd)
+17 * * * *   mkdir -p <repo>/logs && <repo>/scripts/cron-set-run-request.sh >> <repo>/logs/set-run-request.log 2>&1
+# every-minute poller — the actual executor; flock = single writer
+* * * * *    cd <repo> && mkdir -p logs && flock -n logs/doit.lock ~/.bun/bin/bun scripts/poll-run-request.ts >> logs/poll-requests.log 2>&1
 ```
 
 Wrap manual `bun run doIt` / purge runs in the same `flock` while the poller is active.
-Dated logs land in `logs/`.
+Dated run logs land in `logs/`; the cron lines append to `logs/set-run-request.log`
+(hourly) and `logs/poll-requests.log` (per actual run) — all `*.log` are pruned at
+14 days. The `mkdir -p` in each line self-heals the directory a fresh checkout won't
+have.
+
+**Fresh-checkout checklist** (everything above lives outside git — a new clone will
+look healthy but the pipeline silently won't run until each item is in place):
+
+1. `.env` (gitignored) — without `S3_*` the poller exits non-zero every minute; the
+   crontab entries still "fire" but do nothing.
+2. Crontab installed (lines above) **and** the cron daemon actually running
+   (`systemctl is-active cron`). Verify end-to-end with a canary entry
+   (`* * * * * date > /tmp/cron-canary.txt`, then check the file within a minute).
+
+Symptom of a broken link anywhere in the chain: the web "Run" button sets the
+`meta/run-request` marker in R2, but nothing consumes it — the landing page's
+last-run time stops advancing. Manual repair: `flock -n logs/doit.lock bun
+scripts/poll-run-request.ts` (reads + consumes the marker, runs one tick).
 
 ## Gates
 
